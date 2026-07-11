@@ -20,6 +20,7 @@ class LevelBuilder {
 
   _push(x, y) {
     this._chain.push({ x, y });
+    if (this._pipePts) this._pipePts.push({ x, y }); // see pipeStart()/pipeEnd()
     this.x = x;
     this.y = y;
     return this;
@@ -325,6 +326,109 @@ class LevelBuilder {
       len: height - 14 - r, r, angle0,
     });
     return this;
+  }
+
+  // --- Factory set-pieces ---
+
+  // Pneumatic compactor: a press at industrial-machine scale — same
+  // wait-for-the-rise timing, bigger and slower. Follow with flat() past it.
+  compactor(ox, w = 190, clearance = 260, period = 4.2, phase = 0) {
+    this.obstacles.push({
+      type: 'compactor', cx: this.x + ox + w / 2, groundY: this.y,
+      w, clearance, period, phase,
+    });
+    return this;
+  }
+
+  // Conveyor belt on flat ground ahead: speed > 0 carries you along, speed <
+  // 0 fights your travel. Follow with flat() covering it.
+  conveyor(w, speed = 4) {
+    this.obstacles.push({ type: 'conveyor', x0: this.x, groundY: this.y, w, speed });
+    return this;
+  }
+
+  // Gap with scrap metal raining from a chute above: several irregular
+  // chunks (random shape/color) drop on their own offset cycle. Wait for a
+  // clean break in the fall, then commit across.
+  fallingScrap(w, { count = 3, period = 2.6, phase = 0, drop = 520 } = {}) {
+    this.obstacles.push({
+      type: 'scrap', x0: this.x, w, groundY: this.y,
+      topY: this.y - drop, count, period, phase,
+    });
+    return this.gap(w, 40);
+  }
+
+  // Begin a large drivable pipe: ordinary flat()/slope() calls lay the floor
+  // as usual — pipeStart just starts recording the path so pipeEnd can wrap
+  // it in a tube shell + ceiling. The interior only renders while the car is
+  // inside; from outside it reads as a plain steel pipe.
+  pipeStart(radius = 100) {
+    this._pipePts = [{ x: this.x, y: this.y }];
+    this._pipeRadius = radius;
+    return this;
+  }
+
+  // Close the pipe: registers the ceiling over the path laid since
+  // pipeStart. The tube's mouths are open — a gap() right after lets the car
+  // launch out of one pipe and land in the next.
+  pipeEnd() {
+    if (this._pipePts && this._pipePts.length > 1) {
+      this.obstacles.push({ type: 'pipe', pts: this._pipePts, radius: this._pipeRadius });
+    }
+    this._pipePts = null;
+    return this;
+  }
+
+  // Sludge vat: a dip with a real drivable floor (unlike water/moltenPit,
+  // there's no gap — you drive INTO and OUT of this one), filled with
+  // corrosive goo. The render clips the liquid to the actual terrain
+  // outline (Obstacles.js), so it automatically molds to the valley shape
+  // and never paints over ground that should stay visible. Submerged
+  // wheels build a lethality bar (Car.js/HUD) instead of dying on contact —
+  // a fast splash survives, dawdling does not.
+  sludgeVat(w, depth = 130) {
+    this.gap(0);
+    const x0 = this.x, y0 = this.y;
+    this.valley(w, depth);
+    this._chain.surface = 'sludge';
+    this.obstacles.push({ type: 'sludge', x0, y0, w, depth });
+    return this.gap(0);
+  }
+
+  // Coiled ground spring at ox ahead: any contact launches the car hard and
+  // vertically, on a cooldown. Follow with flat() past it.
+  spring(ox, w = 110, launchVel = 19) {
+    this.obstacles.push({ type: 'spring', x: this.x + ox, groundY: this.y, w, launchVel });
+    return this;
+  }
+
+  // Continuously spinning blade on a tall post at ox ahead, hub `height`
+  // above the road: a full-diameter bar sweeps in a circle, its lower tip
+  // reaching all the way to road height once per rotation. `len` defaults to
+  // 2*height (plus a little overlap) so the tip always reaches the floor —
+  // override it explicitly only for an unusual hub height.
+  spinBlade(ox, { height = 260, thickness = 30, omega = 3.0, phase = 0, len } = {}) {
+    this.obstacles.push({
+      type: 'blade', ax: this.x + ox, ay: this.y - height, groundY: this.y,
+      len: len ?? (height * 2 + 30), thickness, omega, phase,
+    });
+    return this;
+  }
+
+  // Elevator that LOWERS the car: parks at road level, and while ridden
+  // sinks `drop` px before springing back up once clear. Terrain resumes
+  // `drop` px lower on the far side. The side guard only spans the UPPER
+  // part of the shaft (stops short of the exit line) so the car isn't
+  // walled in once it reaches the bottom.
+  elevatorDown(w = 220, drop = 260) {
+    this.obstacles.push({ type: 'elevator', x0: this.x, y0: this.y, w, drop });
+    const guardH = Math.max(0, drop - 110);
+    // style 'steel' renders as riveted plate (GameScreen._drawWalls) — the
+    // default wood-plank wall look would clash with the industrial shaft.
+    if (guardH > 0) {
+      this.walls.push({ cx: this.x + w + 14, cy: this.y + guardH / 2, w: 28, h: guardH, style: 'steel' });
+    }
+    return this.gap(w, drop);
   }
 
   finish(meta) {
@@ -1826,6 +1930,372 @@ function castle10() {
   });
 }
 
+// --- Factory (World 6) ---------------------------------------------------
+// Sprawling machine floor, harder than the Castle: expected player state is
+// a heavily upgraded (near-maxed or maxed) car — these levels run long and
+// tall, with big gaps that need real speed. New hazards: pneumatic
+// compactors (oversized presses), conveyor belts (push with/against you),
+// falling scrap (dodge the drop), drivable pipes (interior only renders
+// while you're inside), sludge vats (a fill/drain corrosion bar, not
+// instant death), ground springs (hard vertical launch on contact),
+// spinning blades (continuous — pure timing) and elevators that lower
+// instead of raise. Reuses plenty of the usual cast too: conveyors and
+// compactors sit alongside oil, presses, wrecking balls, fans, crane
+// lifts, rockfall-style timing, tire stacks and acid (molten 'acid') pools.
+
+function factory1() {
+  const b = new LevelBuilder(0, GROUND_Y);
+  b.flat(650)
+    .conveyor(280, 6)
+    .flat(480)
+    .conveyor(240, -5)
+    .flat(560);
+  b.compactor(260, 180, 250, 4.0, 0);
+  b.flat(760)
+    .hills(2, 480, 70)
+    .flat(300)
+    .slope(220, -110, 8)
+    .gap(380, 60)
+    .slope(260, 110)
+    .flat(500)
+    .conveyor(300, 7)
+    .flat(560)
+    .hills(2, 520, 90)
+    .flat(700);
+  return b.finish({
+    name: '1. The Loading Dock',
+    concept: 'Welcome to the Factory: conveyor belts, a compactor, and your first big jump.',
+    targetTime: 78,
+    basePayout: 18000,
+    recommended: 'sports',
+    friction: 0.95,
+  });
+}
+
+function factory2() {
+  const b = new LevelBuilder(0, GROUND_Y);
+  b.flat(700)
+    .oilSlick(260, 1)
+    .flat(560)
+    .fallingScrap(260, { count: 3, period: 2.6 })
+    .flat(760)
+    .conveyor(260, 5)
+    .flat(500)
+    .hills(2, 460, 80)
+    .flat(300)
+    .fallingScrap(300, { count: 4, period: 2.8, phase: 0.3 })
+    .flat(820)
+    .conveyor(240, -6)
+    .flat(560)
+    .slope(200, -90)
+    .gap(320, 55)
+    .slope(230, 90)
+    .flat(600)
+    .fallingScrap(280, { count: 3, period: 2.4, phase: 0.5 })
+    .flat(700);
+  return b.finish({
+    name: '2. Scrap Line',
+    concept: 'Scrap metal rains from the chutes above. Watch a fall clear, then punch it across.',
+    targetTime: 82,
+    basePayout: 19500,
+    recommended: 'sports',
+    friction: 0.95,
+  });
+}
+
+function factory3() {
+  const b = new LevelBuilder(0, GROUND_Y);
+  b.flat(750)
+    .slope(160, -35)
+    .moltenPit(280, 'acid')
+    .slope(160, -35)
+    .flat(700);
+  b.spring(280, 120, 20);
+  b.flat(560)
+    .slope(150, -35)
+    .moltenPit(340, 'acid')
+    .slope(170, -35)
+    .flat(760)
+    .hills(2, 480, 80)
+    .flat(400);
+  b.spring(260, 120, 21);
+  b.flat(600)
+    .slope(160, -35)
+    .moltenPit(380, 'acid', 90)
+    .slope(180, -35)
+    .flat(700);
+  return b.finish({
+    name: '3. Acid Alley',
+    concept: 'Acid pools eat anything that touches them. Ground springs give you extra hang time.',
+    targetTime: 86,
+    basePayout: 21000,
+    recommended: 'sports',
+    friction: 0.95,
+  });
+}
+
+function factory4() {
+  const b = new LevelBuilder(0, GROUND_Y);
+  b.flat(700)
+    .conveyor(260, 5)
+    .flat(560);
+  b.pipeStart(100)
+    .flat(500)
+    .slope(300, -140, 8)
+    .flat(400);
+  b.pipeEnd();
+  b.slope(200, -60)
+    .gap(340, 40)
+    .slope(220, 20);
+  b.pipeStart(110)
+    .flat(700);
+  b.pipeEnd();
+  b.slope(240, 180, 8)
+    .flat(500)
+    .hills(2, 460, 80)
+    .flat(400)
+    .conveyor(280, -6)
+    .flat(600)
+    .slope(200, -90)
+    .gap(360, 60)
+    .slope(240, 90)
+    .flat(700);
+  return b.finish({
+    name: '4. Pipe Works',
+    concept: 'Big steel pipes carry the road underground. Launch out of one, land in the next.',
+    targetTime: 84,
+    basePayout: 23000,
+    recommended: 'sports',
+    friction: 0.95,
+  });
+}
+
+function factory5() {
+  const b = new LevelBuilder(0, GROUND_Y);
+  b.flat(700);
+  b.sludgeVat(650, 140);
+  b.flat(700)
+    .hills(2, 480, 80)
+    .flat(400);
+  b.sludgeVat(500, 180);
+  b.flat(760)
+    .conveyor(260, 5)
+    .flat(560)
+    .drop(160);
+  b.tireStack(240);
+  b.flat(400)
+    .drop(-320)
+    .flat(500);
+  b.sludgeVat(600, 180);
+  b.flat(700);
+  return b.finish({
+    name: '5. The Sludge Pits',
+    concept: 'Corrosive sludge pools in the dips. A fast splash survives — dawdling melts you.',
+    targetTime: 88,
+    basePayout: 25000,
+    recommended: 'sports',
+    friction: 0.95,
+  });
+}
+
+function factory6() {
+  const b = new LevelBuilder(0, GROUND_Y);
+  b.flat(800);
+  b.compactor(280, 200, 260, 4.4, 0);
+  b.flat(700)
+    .hills(2, 460, 70)
+    .flat(300);
+  b.conveyor(280, 6);
+  b.flat(560);
+  b.compactor(260, 210, 250, 4.2, 0.3);
+  b.flat(700)
+    .hills(2, 500, 90)
+    .flat(300);
+  b.conveyor(260, -5);
+  b.flat(600);
+  b.compactor(280, 220, 270, 4.6, 0.55);
+  b.flat(750)
+    .hills(2, 480, 85)
+    .flat(700);
+  return b.finish({
+    name: '6. Compactor Row',
+    concept: 'Pneumatic compactors slam on a slow, heavy cycle. Wait for the rise, then floor it.',
+    targetTime: 92,
+    basePayout: 27500,
+    recommended: 'sports',
+    friction: 0.95,
+  });
+}
+
+function factory7() {
+  const b = new LevelBuilder(0, GROUND_Y);
+  b.flat(750);
+  b.spinBlade(300, { height: 280, omega: 2.8 });
+  b.flat(700)
+    .hills(2, 460, 70)
+    .flat(300);
+  b.wreckingBall(260, 340, 44, 1.0);
+  b.flat(700)
+    .slope(220, -110, 8)
+    .gap(400, 60)
+    .slope(260, 110)
+    .flat(500);
+  b.spinBlade(280, { height: 300, omega: 3.2, phase: 1.4 });
+  b.flat(750)
+    .hills(2, 480, 80)
+    .flat(300);
+  b.spinBlade(300, { height: 270, omega: 3.4, phase: 2.6 });
+  b.flat(700)
+    .hills(2, 460, 75)
+    .flat(600);
+  return b.finish({
+    name: '7. The Blade Line',
+    concept: 'Rotor blades spin without pause. Park close, watch a full sweep, then thread it.',
+    targetTime: 94,
+    basePayout: 30000,
+    recommended: 'sports',
+    friction: 0.95,
+  });
+}
+
+function factory8() {
+  const b = new LevelBuilder(0, GROUND_Y);
+  b.flat(700)
+    .hills(2, 480, 70)
+    .flat(400);
+  b.elevatorDown(220, 320);
+  b.flat(700)
+    .conveyor(260, 5)
+    .flat(560);
+  b.elevatorDown(220, 340);
+  b.flat(650);
+  b.compactor(260, 190, 250, 4.0, 0);
+  b.flat(900);
+  b.craneLift(220, 300);
+  b.ramp(130, 50, 260)
+    .roof(500)
+    .gap(260)
+    .roof(450)
+    .drop(200)
+    .flat(700)
+    .hills(2, 460, 80)
+    .flat(700);
+  return b.finish({
+    name: '8. Down the Shaft',
+    concept: 'Two elevators drop you deep below the factory floor before a crane hauls you back up.',
+    targetTime: 100,
+    basePayout: 33000,
+    deathY: GROUND_Y + 1300,
+    recommended: 'sports',
+    friction: 0.95,
+  });
+}
+
+function factory9() {
+  const b = new LevelBuilder(0, GROUND_Y);
+  b.flat(700)
+    .conveyor(260, 6)
+    .flat(600);
+  b.spring(260, 120, 20);
+  b.flat(600)
+    .slope(210, -100, 8)
+    .gap(380, 50)
+    .slope(250, 100)
+    .flat(500);
+  b.compactor(260, 190, 250, 4.2, 0.2);
+  b.flat(700)
+    .hills(2, 460, 75)
+    .flat(300);
+  b.fallingScrap(280, { count: 4, period: 2.6, phase: 0.2 });
+  b.flat(760);
+  b.spinBlade(280, { height: 280, omega: 3.0, phase: 0.8 });
+  b.flat(700)
+    .hills(2, 480, 80)
+    .flat(300);
+  b.sludgeVat(650, 120);
+  b.flat(700)
+    .hills(2, 460, 80)
+    .flat(300)
+    .slope(160, -35)
+    .moltenPit(320, 'acid')
+    .slope(170, -35)
+    .flat(700)
+    .conveyor(260, -6)
+    .flat(600);
+  b.spring(240, 120, 20);
+  b.flat(700);
+  return b.finish({
+    name: '9. Assembly Gauntlet',
+    concept: 'Every station on the line, back to back. Nothing here forgives hesitation.',
+    targetTime: 118,
+    basePayout: 36500,
+    deathY: GROUND_Y + 800,
+    recommended: 'sports',
+    friction: 0.95,
+  });
+}
+
+function factory10() {
+  const b = new LevelBuilder(0, GROUND_Y);
+  b.flat(750)
+    .conveyor(280, 6)
+    .flat(600);
+  b.fallingScrap(300, { count: 4, period: 2.6 });
+  b.flat(700)
+    .hills(2, 460, 70)
+    .flat(300);
+  b.compactor(280, 210, 260, 4.4, 0.1);
+  b.flat(900);
+  b.spinBlade(280, { height: 300, omega: 3.2, phase: 0.4 });
+  b.flat(700)
+    .hills(2, 480, 75)
+    .flat(300);
+  b.spring(260, 120, 20);
+  b.flat(600)
+    .slope(220, -110, 8)
+    .gap(420, 60)
+    .slope(260, 110)
+    .flat(600);
+  b.pipeStart(105)
+    .flat(500)
+    .slope(280, -130, 8)
+    .flat(400);
+  b.pipeEnd();
+  b.slope(200, -60)
+    .gap(340, 40)
+    .slope(220, 20);
+  b.pipeStart(105)
+    .flat(650);
+  b.pipeEnd();
+  b.slope(230, 170, 8)
+    .flat(700);
+  b.sludgeVat(750, 100);
+  b.flat(700)
+    .slope(160, -35)
+    .moltenPit(360, 'acid')
+    .slope(180, -35)
+    .flat(750);
+  b.elevatorDown(220, 320);
+  b.flat(700)
+    .conveyor(260, -6)
+    .flat(560);
+  b.spinBlade(280, { height: 270, omega: 3.4, phase: 1.6 });
+  b.flat(750);
+  b.compactor(260, 200, 250, 4.2, 0.4);
+  b.flat(750)
+    .hills(2, 500, 90)
+    .flat(700);
+  return b.finish({
+    name: '10. The Furnace Floor',
+    concept: 'The heart of the plant. Presses, blades, acid, sludge and steel pipes — survive it all.',
+    targetTime: 155,
+    basePayout: 42000,
+    deathY: GROUND_Y + 1500,
+    recommended: 'sports',
+    friction: 0.95,
+  });
+}
+
 const FARM_LEVELS = [
   level1(), level2(), level3(), level4(), level5(),
   level6(), level7(), level8(), level9(), level10(),
@@ -1849,6 +2319,11 @@ const MINES_LEVELS = [
 const CASTLE_LEVELS = [
   castle1(), castle2(), castle3(), castle4(), castle5(),
   castle6(), castle7(), castle8(), castle9(), castle10(),
+];
+
+const FACTORY_LEVELS = [
+  factory1(), factory2(), factory3(), factory4(), factory5(),
+  factory6(), factory7(), factory8(), factory9(), factory10(),
 ];
 
 export const WORLDS = [
@@ -1892,7 +2367,14 @@ export const WORLDS = [
     parallax: ['rgba(64, 55, 88, 0.45)', 'rgba(44, 38, 64, 0.6)'],
     tex: { ground: ['stone', '#8f8a9c', 300], stripe: ['pavement', '#7a7584'] },
   },
-  { id: 6, name: 'Factory', icon: '🏭', playable: false, desc: 'Conveyors, pistons, oil.', levels: [] },
+  {
+    id: 6, name: 'Factory', icon: '🏭', playable: true, factory: true,
+    desc: 'The big machine floor: presses, pipes and spinning steel.',
+    levels: FACTORY_LEVELS,
+    sky: ['#39332c', '#9a6a3e'], groundColor: '#4a4d54', grassColor: '#6b7280',
+    parallax: ['rgba(50, 48, 52, 0.45)', 'rgba(36, 34, 38, 0.6)'],
+    tex: { ground: ['concrete', '#5a5f68', 260], stripe: ['pavement', '#7d828c', 140] },
+  },
 ];
 
 export function getWorld(worldId) {

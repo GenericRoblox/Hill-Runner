@@ -102,6 +102,8 @@ export class Car {
     this.moltenTime = 0;
     this.lavaKind = 'lava';   // last molten zone touched ('lava'/'acid'), for the fail message
     this.bounceReadyAt = 0;   // tire-stack bounce cooldown
+    this.springReadyAt = 0;   // Factory spring-launch cooldown
+    this.sludgeLethality = 0; // 0..1 corrosion bar for Factory sludge vats
     this.airTime = 0;
     this.prevVelY = 0;
     this.landingImpact = 0; // set for one frame on hard landings (camera shake hook)
@@ -305,6 +307,47 @@ export class Car {
       this.moltenTime = 0;
     }
 
+    // Sludge vat: corrosive goo pooled in a dip. Unlike molten pools this
+    // doesn't kill on contact — a lethality bar fills while submerged and
+    // drains while clear, so a quick splash through is survivable but
+    // dawdling (or repeated grazes) melts the car. Heavy drag like water.
+    const sludge = zoneRef('Sludge');
+    if (sludge) {
+      Body.setVelocity(this.chassis, {
+        x: this.chassis.velocity.x * 0.95,
+        y: this.chassis.velocity.y * 0.9,
+      });
+      this.sludgeLethality = Math.min(1, this.sludgeLethality + dtSeconds / 4);
+      if (this.sludgeLethality >= 1) return 'dissolved';
+    } else {
+      this.sludgeLethality = Math.max(0, this.sludgeLethality - dtSeconds / 8);
+    }
+
+    // Conveyor belt: steady horizontal shove while grounded on it, direction
+    // and strength set per-belt (push < 0 runs against travel).
+    const belt = zoneRef('Conveyor');
+    if (belt && grounded) {
+      Body.applyForce(this.chassis, this.chassis.position, {
+        x: (belt.plugin.speed ?? 4) * 0.00012 * this.chassis.mass,
+        y: 0,
+      });
+    }
+
+    // Coiled ground spring: any fresh contact launches the car hard, on a
+    // cooldown so it fires once per pass rather than every physics step.
+    // Biased mostly forward with a modest pop upward — a distance launch,
+    // not a near-vertical one.
+    const spring = zoneRef('Spring');
+    if (spring && now > this.springReadyAt) {
+      const vy = spring.plugin.launchVel ?? 19;
+      const fx = vy * 0.55, fy = -vy * 0.7;
+      Body.setVelocity(this.chassis, { x: this.chassis.velocity.x + fx, y: fy });
+      for (const w of this.wheels) {
+        Body.setVelocity(w, { x: w.velocity.x + fx, y: fy });
+      }
+      this.springReadyAt = now + 600;
+    }
+
     // Tire-stack bounce pad: launch scales with landing impact, so a fall
     // bounces high and repeated bounces build height (a stalled car can
     // trampoline its way up). Tilted slightly forward like the updraft so a
@@ -340,8 +383,8 @@ export class Car {
     const chassisDragging = now - this.chassis.plugin.lastContact < CONTACT_WINDOW_MS;
     const wedged = inverted || (chassisDragging && airborne && a > 1.3);
 
-    // Dangling in leaves or bobbing in water isn't "stuck" — those resolve themselves.
-    if (wedged && slow && !inCanopy && !inWater) {
+    // Dangling in leaves or bobbing in water/sludge isn't "stuck" — those resolve themselves.
+    if (wedged && slow && !inCanopy && !inWater && !sludge) {
       this.stuckTimer += dtSeconds;
       if (this.stuckTimer >= STUCK_GRACE_S) return 'stuck';
     } else {

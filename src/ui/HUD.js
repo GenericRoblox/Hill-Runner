@@ -1,6 +1,6 @@
 // In-game HUD: timer, speed, level name, target time, pause button.
 
-export function renderHUD(ctx, { time, speedKmh, levelName, targetTime, width }) {
+export function renderHUD(ctx, { time, speedKmh, levelName, targetTime, width, sludge = 0 }) {
   ctx.save();
   ctx.textBaseline = 'top';
 
@@ -35,6 +35,26 @@ export function renderHUD(ctx, { time, speedKmh, levelName, targetTime, width })
   ctx.font = 'bold 22px "Segoe UI", sans-serif';
   ctx.fillStyle = 'rgba(255,255,255,0.85)';
   ctx.fillText('❚❚', width - 36, 20);
+
+  // Sludge corrosion bar (Factory sludge vats): fades in only while dirty.
+  if (sludge > 0.01) {
+    const bw = 220, bh = 16;
+    const bx = width / 2 - bw / 2, by = 84; // below the "target" line — no overlap
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, sludge * 3 + 0.15);
+    ctx.fillStyle = 'rgba(20,15,5,0.6)';
+    ctx.fillRect(bx - 3, by - 3, bw + 6, bh + 6);
+    ctx.fillStyle = sludge > 0.75 ? '#e0463a' : sludge > 0.4 ? '#e0a72e' : '#8fbf4a';
+    ctx.fillRect(bx, by, bw * sludge, bh);
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(bx, by, bw, bh);
+    ctx.font = '11px "Segoe UI", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('CORROSION', width / 2, by + 2);
+    ctx.restore();
+  }
 
   ctx.restore();
 }

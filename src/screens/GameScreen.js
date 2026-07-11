@@ -11,6 +11,7 @@ import { Camera } from '../ui/Camera.js';
 import { renderHUD } from '../ui/HUD.js';
 import { renderTouchPedals } from '../ui/TouchControls.js';
 import { sound } from '../ui/Sound.js';
+import { music } from '../ui/Music.js';
 import { input } from '../core/InputManager.js';
 import { screens } from '../core/ScreenManager.js';
 import { saveData } from '../core/SaveData.js';
@@ -62,6 +63,7 @@ export class GameScreen {
     input.reset();
 
     sound.startEngine();
+    music.playNext(); // fades in a track different from whatever just played
     this._build();
   }
 
@@ -91,6 +93,10 @@ export class GameScreen {
   }
 
   restart() {
+    // Retrying from the win screen: _win() already faded music out at the
+    // goal, so bring it back for the replay (retrying after a fail never
+    // stopped it, so this is a no-op there).
+    if (!music.current) music.playNext();
     this._teardown();
     input.reset();
     this._build();
@@ -107,6 +113,7 @@ export class GameScreen {
   exit() {
     if (this.physics) this._teardown();
     sound.stopEngine();
+    music.stop(); // covers quitting to a menu; no-op if _win() already faded it out
     hideResult();
     this._hidePause();
   }
@@ -155,6 +162,7 @@ export class GameScreen {
 
       if (verdict === 'stuck') return this._fail('Flipped and stuck!');
       if (verdict === 'sank') return this._fail('Sank into open water!');
+      if (verdict === 'dissolved') return this._fail('Dissolved in the sludge!');
       if (verdict === 'melted') {
         return this._fail(this.car.lavaKind === 'acid'
           ? 'Dissolved in the acid pool!'
@@ -167,6 +175,8 @@ export class GameScreen {
         const by = this.car.crushedBy;
         return this._fail(by === 'arrows' ? 'Skewered by the archers!'
           : by === 'fireball' ? 'Torched by a fireball!'
+          : by === 'blade' ? 'Diced by the spinning blade!'
+          : by === 'compactor' ? 'Flattened by the compactor!'
           : 'Smashed to scrap!');
       }
       const pos = this.car.position();
@@ -212,6 +222,7 @@ export class GameScreen {
   _win() {
     this.state = 'won';
     this.camera.shake = 0; // see _fail — a hard landing at the flag otherwise shakes forever
+    music.stop(); // fade out right at the goal, not when they leave for the next level
     const prevBest = saveData.getLevelStars(this.key);
     const stars = calcStars(this.level, this.time, this.car.everFlipped);
     const coins = calcPayout(this.level, this.time, stars, this.car.airTime, prevBest);
@@ -278,13 +289,14 @@ export class GameScreen {
     this._drawParallax(ctx, width, height, 0.35, 0.68, pNear);
     if (w.cave) this._drawCaveCeiling(ctx, width, height);
     if (w.castle) this._drawCastleBackdrop(ctx, width, height);
+    if (w.factory) this._drawFactoryBackdrop(ctx, width, height);
 
     ctx.save();
     this.camera.applyTransform(ctx);
     this._drawTerrain(ctx);
     this._drawBuildings(ctx);
     this._drawWalls(ctx);
-    this.obstacleSet.render(ctx);
+    this.obstacleSet.render(ctx, this.car.position());
     this._drawFinish(ctx);
     this._drawCar(ctx);
     this.particles.render(ctx);
@@ -296,6 +308,7 @@ export class GameScreen {
       speedKmh: this.car.speed() * 8, // px/step → rough km/h at ~4m car length
       levelName: this.level.name,
       targetTime: this.level.targetTime,
+      sludge: this.car.sludgeLethality,
       width,
     });
 
@@ -444,6 +457,61 @@ export class GameScreen {
     }
   }
 
+  // Screen-space girder/smokestack skyline for the Factory world (worldDef.
+  // factory): purely aesthetic, like the cave ceiling and castle backdrop.
+  _drawFactoryBackdrop(ctx, width, height) {
+    const offset = this.camera.x * 0.85;
+    const t = this.physics ? this.physics.timestamp() / 1000 : 0;
+    const base = Math.min(110, height * 0.11);
+    ctx.fillStyle = '#1c1d22';
+    ctx.fillRect(0, 0, width, base);
+    // Girder truss zigzag
+    ctx.strokeStyle = '#33353c';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    const gw = 70;
+    const k0 = Math.floor(offset / gw) - 1;
+    const k1 = Math.floor((offset + width) / gw) + 1;
+    for (let k = k0; k <= k1; k++) {
+      const sx = k * gw - offset;
+      ctx.moveTo(sx, base - 4);
+      ctx.lineTo(sx + gw, base - 34);
+      ctx.moveTo(sx, base - 34);
+      ctx.lineTo(sx + gw, base - 4);
+    }
+    ctx.stroke();
+    // Smokestacks with drifting smoke, on deterministic world-x buckets
+    const b0 = Math.floor(offset / 480) - 1;
+    const b1 = Math.floor((offset + width) / 480) + 1;
+    for (let k = b0; k <= b1; k++) {
+      const sx = k * 480 + ((k * 113) % 160) - offset;
+      ctx.fillStyle = '#2a2b30';
+      ctx.fillRect(sx - 14, base - 90, 28, 90);
+      ctx.fillStyle = '#e8c34a';
+      ctx.fillRect(sx - 14, base - 12, 28, 6);
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = '#888e98';
+      for (let p = 0; p < 3; p++) {
+        const py = base - 96 - ((t * 22 + p * 30 + k * 17) % 90);
+        ctx.beginPath();
+        ctx.arc(sx + Math.sin(py * 0.05 + k) * 8, py, 12 + p * 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    // Blinking hazard lights along the truss
+    const h0 = Math.floor(offset / 260) - 1;
+    const h1 = Math.floor((offset + width) / 260) + 1;
+    for (let k = h0; k <= h1; k++) {
+      const sx = k * 260 + ((k * 61) % 90) - offset;
+      const on = Math.sin(t * 3 + k * 2.1) > 0.3;
+      ctx.beginPath();
+      ctx.arc(sx, base - 18, 5, 0, Math.PI * 2);
+      ctx.fillStyle = on ? '#ff5a3c' : '#5a2a20';
+      ctx.fill();
+    }
+  }
+
   _drawTerrain(ctx) {
     const bottom = this.level.deathY + 300;
     const tex = this.worldDef.tex || {};
@@ -527,19 +595,35 @@ export class GameScreen {
     for (const wall of this.level.walls) {
       ctx.save();
       ctx.translate(wall.cx, wall.cy);
-      ctx.fillStyle = woodPat || '#8a6b42';
-      ctx.fillRect(-wall.w / 2, -wall.h / 2, wall.w, wall.h);
-      ctx.strokeStyle = '#5e4626';
-      ctx.lineWidth = 3;
-      ctx.strokeRect(-wall.w / 2, -wall.h / 2, wall.w, wall.h);
-      // Plank lines
-      ctx.beginPath();
-      for (let y = -wall.h / 2 + 22; y < wall.h / 2; y += 22) {
-        ctx.moveTo(-wall.w / 2, y);
-        ctx.lineTo(wall.w / 2, y);
+      if (wall.style === 'steel') {
+        // Riveted plate (Factory elevator guards etc.) — the wood-plank
+        // default would clash with industrial set-pieces.
+        ctx.fillStyle = texPattern('concrete', '#5a616c', 170) || '#4c525c';
+        ctx.fillRect(-wall.w / 2, -wall.h / 2, wall.w, wall.h);
+        ctx.strokeStyle = '#23262c';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(-wall.w / 2, -wall.h / 2, wall.w, wall.h);
+        ctx.fillStyle = '#23262c';
+        for (let y = -wall.h / 2 + 18; y < wall.h / 2 - 8; y += 34) {
+          ctx.beginPath();
+          ctx.arc(0, y, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        ctx.fillStyle = woodPat || '#8a6b42';
+        ctx.fillRect(-wall.w / 2, -wall.h / 2, wall.w, wall.h);
+        ctx.strokeStyle = '#5e4626';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(-wall.w / 2, -wall.h / 2, wall.w, wall.h);
+        // Plank lines
+        ctx.beginPath();
+        for (let y = -wall.h / 2 + 22; y < wall.h / 2; y += 22) {
+          ctx.moveTo(-wall.w / 2, y);
+          ctx.lineTo(wall.w / 2, y);
+        }
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
       }
-      ctx.lineWidth = 1.5;
-      ctx.stroke();
       ctx.restore();
     }
   }

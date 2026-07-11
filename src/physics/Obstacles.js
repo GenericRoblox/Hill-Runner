@@ -14,11 +14,25 @@ function approach(current, target, maxDelta) {
   return Math.max(current - maxDelta, target);
 }
 
+// Small deterministic PRNG (mulberry32) so scrap-metal chunks get stable
+// shapes/colors/positions across runs without needing Math.random().
+function seededRandom(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6d2b79f5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 export class Obstacles {
   constructor(level, world) {
     this.world = world;
     this.engine = world.engine;
     this.deathY = level.deathY;
+    this.chains = level.chains; // real terrain outline, used to clip sludge fills to it
     this.items = [];   // per-obstacle render data
     this.all = [];     // every body + constraint added, for teardown
     this.movers = [];  // kinematic bodies driven each physics step
@@ -44,6 +58,14 @@ export class Obstacles {
       else if (def.type === 'spikes') this._spikes(def);
       else if (def.type === 'beam') this._beam(def);
       else if (def.type === 'arrows') this._arrows(def);
+      else if (def.type === 'compactor') this._compactor(def);
+      else if (def.type === 'conveyor') this._conveyor(def);
+      else if (def.type === 'scrap') this._scrap(def);
+      else if (def.type === 'pipe') this._pipe(def);
+      else if (def.type === 'sludge') this._sludge(def);
+      else if (def.type === 'spring') this._spring(def);
+      else if (def.type === 'blade') this._blade(def);
+      else if (def.type === 'elevator') this._elevator(def);
     }
     for (const thing of this.all) world.add(thing);
 
@@ -109,6 +131,11 @@ export class Obstacles {
       } else if (m.kind === 'arrows') {
         const p = (((now / 1000) / m.period + m.phase) % 1 + 1) % 1;
         m.zone.plugin.raining = p < m.rainFrac;
+      } else if (m.kind === 'blade') {
+        // Continuously spinning Factory blade: a full-diameter bar rotating
+        // about its own hub. No position update needed — Body.setAngle alone
+        // sweeps it through the road-level danger zone once per rotation.
+        Body.setAngle(m.body, m.phase - (now / 1000) * m.omega);
       } else if (m.kind === 'crumble') {
         // Planks give way a beat after they're first ridden (PhysicsWorld
         // stamps plugin.lastRider on terrain contact) — outrun the collapse.
@@ -324,6 +351,195 @@ export class Obstacles {
     this.items.push({ type: 'arrows', x, w, groundY, topY: groundY - 380, period, phase, rainFrac, zone });
   }
 
+  // --- Factory set-pieces ---
+
+  // Pneumatic compactor: a press at industrial-machine scale. Shares the
+  // 'press' mover math (generic over any body) but its own label so
+  // PhysicsWorld's lethal check and the fail message can tell them apart.
+  _compactor({ cx, groundY, w, clearance, period, phase }) {
+    const h = 150;
+    const block = Bodies.rectangle(cx, groundY - clearance - h / 2, w, h, {
+      isStatic: true, friction: 0.4, label: 'compactor',
+    });
+    this.all.push(block);
+    this.movers.push({ kind: 'press', body: block, cx, groundY, w, h, clearance, period, phase });
+    this.items.push({ type: 'compactor', body: block, cx, groundY, w, h, clearance });
+  }
+
+  // Conveyor belt: a sensor strip over flat ground that shoves grounded cars
+  // along at `speed` (Car.js). Purely a force nudge, so the player still
+  // steers/brakes normally — it just fights or helps their own throttle.
+  _conveyor({ x0, groundY, w, speed }) {
+    const zone = Bodies.rectangle(x0 + w / 2, groundY - 10, w, 26, {
+      isStatic: true, isSensor: true, label: 'conveyor',
+    });
+    zone.plugin.speed = speed;
+    this.all.push(zone);
+    this.items.push({ type: 'conveyor', x0, groundY, w, speed });
+  }
+
+  // Falling scrap metal: irregular chunks (random shape/color, deterministic
+  // per slot) drop from a ceiling chute on their own offset cycle, reusing
+  // the rockfall 'rock' mover (generic over body shape) so each chunk drops,
+  // resets and re-arms independently — a staggered curtain to thread.
+  _scrap({ x0, w, groundY, topY, count, period, phase }) {
+    const colors = ['#c0392b', '#d99a2b', '#7f8c8d', '#4a6fa5', '#7a8a3a', '#a85a2e'];
+    const chunks = [];
+    for (let i = 0; i < count; i++) {
+      const rnd = seededRandom(x0 * 31 + i * 97 + 13);
+      const cx = x0 + (w / (count + 1)) * (i + 1) + (rnd() - 0.5) * Math.min(50, w / (count + 2));
+      const r = 18 + rnd() * 14;
+      const opts = {
+        label: 'debris', density: 0.0042, friction: 0.4, frictionAir: 0,
+        restitution: 0.15, isStatic: true,
+      };
+      // Shape strides with the slot index (rotated by a per-CHUTE offset),
+      // so a chute never rains two identical shapes back to back; the
+      // seeded rolls still vary size and drop position. Color's {2i, 2i+1}
+      // ranges are disjoint for consecutive slots — no back-to-back repeats.
+      const shapeIdx = (i + Math.floor(x0 / 37)) % 3;
+      const body = shapeIdx === 0
+        ? Bodies.rectangle(cx, topY, r * 1.6, r * 1.6, { ...opts, chamfer: { radius: 3 } })
+        : shapeIdx === 1
+          ? Bodies.polygon(cx, topY, 3, r * 1.25, opts)
+          : Bodies.polygon(cx, topY, 6, r, opts);
+      const color = colors[(i * 2 + Math.floor(rnd() * 2)) % colors.length];
+      this.all.push(body);
+      this.movers.push({
+        kind: 'rock', body, x: cx, topY, groundY,
+        period, phase: phase + i / count, cycle: null,
+      });
+      chunks.push({ body, color });
+    }
+    this.items.push({ type: 'scrap', x0, w, topY, groundY, chunks });
+  }
+
+  // Large drivable pipe: pipeStart()/pipeEnd() (LevelBuilder) capture the
+  // floor path (laid with ordinary flat()/slope() calls) and hand it here as
+  // `pts`. We only add the ceiling — matching rotated static rectangles
+  // offset above the floor line, same segment math as Terrain.js — so the
+  // tube is open at both mouths (a gap() after pipeEnd() lets the car launch
+  // out of one pipe and land in the next).
+  _pipe({ pts, radius }) {
+    const t = 24;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i], p1 = pts[i + 1];
+      const dx = p1.x - p0.x, dy = p1.y - p0.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 1) continue;
+      const angle = Math.atan2(dy, dx);
+      const nx = -dy / len, ny = dx / len;
+      const midx = (p0.x + p1.x) / 2, midy = (p0.y + p1.y) / 2;
+      const off = radius * 2 + t / 2;
+      const ceil = Bodies.rectangle(midx - nx * off, midy - ny * off, len + 2, t, {
+        isStatic: true, angle, friction: 0.3, label: 'terrain',
+      });
+      this.all.push(ceil);
+    }
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of pts) {
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y - radius * 2); maxY = Math.max(maxY, p.y + radius * 0.5);
+    }
+    this.items.push({ type: 'pipe', pts, radius, minX, maxX, minY, maxY });
+  }
+
+  // Sludge vat: a real drivable dip (LevelBuilder.sludgeVat lays the floor)
+  // with a corrosive-goo sensor zone over its lower portion. Car.js fills a
+  // lethality bar while submerged instead of killing on contact.
+  //
+  // Like any liquid, the pool has a flat surface (`top`) — but its FLOOR is
+  // the real terrain curve, not a fixed depth. So the fill only ever
+  // occupies the space ABOVE the ground and below the surface line (where
+  // terrain genuinely isn't present); it can never paint over the solid dip
+  // floor itself. Both the wet x-range and the floor line come straight
+  // from the actual chain points, so it automatically molds to whatever
+  // shape the dip actually is.
+  _sludge({ x0, y0, w, depth }) {
+    const top = y0 + depth * 0.3;
+    const zoneBottom = y0 + depth + 50; // sensor zone only — generous, doesn't need to be visual
+
+    const chain = this.chains.find(c =>
+      Math.abs(c[0].x - x0) < 2 && Math.abs(c[c.length - 1].x - (x0 + w)) < 2);
+    let wetX0 = x0, wetX1 = x0 + w;
+    let floor = [];
+    if (chain) {
+      let enter = null, exit = null;
+      for (let i = 0; i < chain.length - 1; i++) {
+        const a = chain[i], b = chain[i + 1];
+        if (a.y < top && b.y >= top && enter === null) {
+          enter = a.x + (b.x - a.x) * (top - a.y) / (b.y - a.y);
+        }
+        if (a.y >= top && b.y < top) {
+          exit = a.x + (b.x - a.x) * (top - a.y) / (b.y - a.y);
+        }
+      }
+      if (enter !== null) wetX0 = enter;
+      if (exit !== null) wetX1 = exit;
+      if (enter === null && exit === null && !chain.every(p => p.y >= top)) {
+        wetX0 = wetX1 = x0; // whole dip stays shallower than `top` — no pool
+      }
+      // The pool's floor: the surface-crossing points themselves (exactly
+      // on the water line) plus every real chain sample strictly between
+      // them (the actual, possibly-curved bottom of the dip).
+      floor = [
+        { x: wetX0, y: top },
+        ...chain.filter(p => p.x > wetX0 + 0.5 && p.x < wetX1 - 0.5),
+        { x: wetX1, y: top },
+      ];
+    }
+    const wetW = Math.max(0, wetX1 - wetX0);
+
+    const zone = Bodies.rectangle(wetX0 + wetW / 2, (top + zoneBottom) / 2, wetW, zoneBottom - top, {
+      isStatic: true, isSensor: true, label: 'sludge',
+    });
+    this.all.push(zone);
+    this.items.push({ type: 'sludge', wetX0, wetX1, top, floor });
+  }
+
+  // Coiled ground spring: a solid pad (also a zone, like the tire-stack
+  // bouncer) that launches the car hard on contact (Car.js), cooldown-gated.
+  // Kept LOW (the idle visual is a flat plate flush with the road, so a tall
+  // collider would be an invisible step) and chamfered so rolling onto it is
+  // seamless — the launch fires on first touch either way.
+  _spring({ x, groundY, w, launchVel }) {
+    const h = 14;
+    const pad = Bodies.rectangle(x, groundY - h / 2, w, h, {
+      isStatic: true, friction: 0.8, label: 'spring', chamfer: { radius: 6 },
+    });
+    pad.plugin.launchVel = launchVel;
+    this.all.push(pad);
+    this.items.push({ type: 'spring', x, groundY, w, pad });
+  }
+
+  // Spinning blade: a full-diameter sensor bar rotating continuously about a
+  // fixed hub — lethal on any touch (PhysicsWorld), so clearing it is pure
+  // timing, not a directional-hit check like the wrecking ball. `len` is
+  // sized by the builder to reach the floor at the bottom of every rotation.
+  _blade({ ax, ay, groundY, len, thickness = 30, omega, phase }) {
+    const blade = Bodies.rectangle(ax, ay, len, thickness, {
+      isStatic: true, isSensor: true, label: 'blade', angle: phase,
+    });
+    this.all.push(blade);
+    this.movers.push({ kind: 'blade', body: blade, ax, ay, omega, phase });
+    this.items.push({ type: 'blade', ax, ay, groundY, len, thickness, blade });
+  }
+
+  // Elevator that LOWERS the car: identical mover math to the Mines/City
+  // crane lift (parks at road level, travels to a hold target while ridden,
+  // springs back once clear) — just with the ridden target BELOW road level.
+  _elevator({ x0, y0, w, drop }) {
+    const platform = Bodies.rectangle(x0 + w / 2, y0 + 11, w - 8, 22, {
+      isStatic: true, friction: 1.0, label: 'terrain',
+    });
+    this.all.push(platform);
+    this.movers.push({
+      kind: 'lift', body: platform,
+      yBot: y0 + 11, yTop: y0 + drop + 11, holdUntil: 0,
+    });
+    this.items.push({ type: 'elevator', body: platform, x0, y0, w, drop });
+  }
+
   _ramp({ x, y, w, h }) {
     // Deck: rotated rectangle whose top face runs (x,y) -> (x+w, y-h).
     const len = Math.hypot(w, h);
@@ -400,7 +616,7 @@ export class Obstacles {
     this.items.push({ type: 'ropebridge', planks, x0, y0, width });
   }
 
-  render(ctx) {
+  render(ctx, carPos) {
     for (const it of this.items) {
       if (it.type === 'ramp') this._renderRamp(ctx, it);
       else if (it.type === 'seesaw') this._renderSeesaw(ctx, it);
@@ -422,15 +638,24 @@ export class Obstacles {
       else if (it.type === 'spikes') this._renderSpikes(ctx, it);
       else if (it.type === 'beam') this._renderBeam(ctx, it);
       else if (it.type === 'arrows') this._renderArrows(ctx, it);
+      else if (it.type === 'compactor') this._renderCompactor(ctx, it);
+      else if (it.type === 'conveyor') this._renderConveyor(ctx, it);
+      else if (it.type === 'scrap') this._renderScrap(ctx, it);
+      else if (it.type === 'pipe') this._renderPipe(ctx, it, carPos);
+      else if (it.type === 'sludge') this._renderSludge(ctx, it);
+      else if (it.type === 'spring') this._renderSpring(ctx, it);
+      else if (it.type === 'blade') this._renderBlade(ctx, it);
+      else if (it.type === 'elevator') this._renderElevator(ctx, it);
     }
   }
 
-  // Drawn AFTER the car: canopies swallow snagged cars, water/lava submerge them.
+  // Drawn AFTER the car: canopies swallow snagged cars, water/lava/sludge submerge them.
   renderOverlay(ctx) {
     for (const it of this.items) {
       if (it.type === 'tree') this._renderCanopy(ctx, it);
       else if (it.type === 'water') this._renderWaterFront(ctx, it);
       else if (it.type === 'molten') this._renderMoltenFront(ctx, it);
+      else if (it.type === 'sludge') this._renderSludgeFront(ctx, it);
     }
   }
 
@@ -1048,6 +1273,419 @@ export class Obstacles {
       ctx.fillStyle = '#8a6b42';
       ctx.fillRect(px - 5, y0 - 26, 10, 30);
     }
+    ctx.restore();
+  }
+
+  _renderCompactor(ctx, { body, cx, groundY, w, h, clearance }) {
+    const top = groundY - clearance - h - 40;
+    ctx.save();
+    // Twin hydraulic cylinder housings, bigger than a plain press.
+    ctx.fillStyle = '#4a5058';
+    ctx.fillRect(cx - w / 2 - 34, top, 26, groundY - top);
+    ctx.fillRect(cx + w / 2 + 8, top, 26, groundY - top);
+    ctx.fillStyle = '#2b2e35';
+    ctx.fillRect(cx - w / 2 - 40, top - 20, w + 80, 24);
+    // Warning beacon: red while the ram is descending (lethal), green while
+    // parked or rising (safe to pass) — the read the player times against.
+    const crushing = !!body.plugin.crushing;
+    ctx.beginPath();
+    ctx.arc(cx, top - 32, 8, 0, Math.PI * 2);
+    ctx.fillStyle = crushing ? '#ff5a3c' : '#4dbb63';
+    ctx.fill();
+    if (crushing) {
+      ctx.fillStyle = 'rgba(255, 90, 60, 0.25)';
+      ctx.beginPath();
+      ctx.arc(cx, top - 32, 16, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Piston shaft down to the block
+    const blockTop = body.position.y - h / 2;
+    ctx.fillStyle = '#7d8798';
+    ctx.fillRect(cx - 16, top + 4, 32, blockTop - top - 4);
+    // Block, tinted concrete for a heavy cast-iron read
+    ctx.translate(cx - w / 2, blockTop);
+    ctx.fillStyle = texPattern('concrete', '#525a68', 190) || '#454c58';
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = '#20232a';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(0, 0, w, h);
+    // Crush-face stripes, clamped so the row spans the full block width
+    for (let sx = 0, i = 0; sx < w; sx += 28, i++) {
+      ctx.fillStyle = i % 2 ? '#20232a' : '#e8c34a';
+      ctx.fillRect(sx, h - 18, Math.min(28, w - sx), 18);
+    }
+    ctx.restore();
+  }
+
+  _renderConveyor(ctx, { x0, groundY, w, speed }) {
+    const t = this.engine.timing.timestamp / 1000;
+    ctx.save();
+    ctx.fillStyle = texPattern('concrete', '#3a3f47', 150) || '#33373d';
+    ctx.fillRect(x0, groundY - 16, w, 20);
+    // Rollers at both ends
+    for (const rx of [x0, x0 + w]) {
+      ctx.beginPath();
+      ctx.arc(rx, groundY - 6, 12, 0, Math.PI * 2);
+      ctx.fillStyle = '#20232a';
+      ctx.fill();
+    }
+    // Moving chevrons show direction + relative speed
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0, groundY - 16, w, 20);
+    ctx.clip();
+    const dir = speed >= 0 ? 1 : -1;
+    const spacing = 34;
+    const scroll = ((t * speed * 20) % spacing + spacing) % spacing;
+    ctx.strokeStyle = '#e8c34a';
+    ctx.lineWidth = 4;
+    ctx.lineCap = 'round';
+    for (let cx = x0 - spacing + scroll; cx < x0 + w + spacing; cx += spacing) {
+      ctx.beginPath();
+      ctx.moveTo(cx - 8 * dir, groundY - 14);
+      ctx.lineTo(cx + 8 * dir, groundY - 6);
+      ctx.lineTo(cx - 8 * dir, groundY + 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.restore();
+  }
+
+  _renderScrap(ctx, { x0, w, topY, chunks }) {
+    ctx.save();
+    // Chute mouth
+    ctx.fillStyle = '#2a2d33';
+    ctx.fillRect(x0 - 10, topY - 260, w + 20, 260);
+    ctx.fillStyle = '#e8c34a';
+    for (let sx = x0; sx < x0 + w; sx += 26) {
+      ctx.fillRect(sx, topY - 14, 14, 8);
+    }
+    // Parked chunks are drawn too (they're solid bodies wedged in the chute
+    // mouth, like the rockfall boulder — and seeing one loaded telegraphs
+    // the next drop); ghost trails only while actually falling.
+    for (const { body, color } of chunks) {
+      const verts = body.vertices;
+      if (!body.isStatic) {
+        // Trailing ghost for a falling read (cheap: two faded offset copies).
+        ctx.globalAlpha = 0.2;
+        ctx.fillStyle = color;
+        for (const s of [16, 32]) {
+          ctx.beginPath();
+          ctx.moveTo(verts[0].x, verts[0].y - s);
+          for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i].x, verts[i].y - s);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+      ctx.beginPath();
+      ctx.moveTo(verts[0].x, verts[0].y);
+      for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i].x, verts[i].y);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.strokeStyle = '#1c1e22';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(body.position.x, body.position.y, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.4)';
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Exterior always reads as a plain steel tube; interior rings/lighter tint
+  // only appear while the car sits within the tube's bounding box, per spec
+  // ("interior is shown only when the player is inside").
+  _renderPipe(ctx, item, carPos) {
+    const { pts, radius } = item;
+    const inside = !!carPos && carPos.x >= item.minX - 30 && carPos.x <= item.maxX + 30
+      && carPos.y >= item.minY - 30 && carPos.y <= item.maxY + 30;
+
+    const top = [], bot = [];
+    for (let i = 0; i < pts.length; i++) {
+      const p0 = pts[Math.max(0, i - 1)], p1 = pts[Math.min(pts.length - 1, i + 1)];
+      const dx = p1.x - p0.x, dy = p1.y - p0.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      top.push({ x: pts[i].x - nx * radius * 2, y: pts[i].y - ny * radius * 2 });
+      bot.push({ x: pts[i].x + nx * radius * 0.4, y: pts[i].y + ny * radius * 0.4 });
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(top[0].x, top[0].y);
+    for (const p of top) ctx.lineTo(p.x, p.y);
+    for (let i = bot.length - 1; i >= 0; i--) ctx.lineTo(bot[i].x, bot[i].y);
+    ctx.closePath();
+    ctx.fillStyle = texPattern('concrete', inside ? '#8d94a0' : '#565d68', 160)
+      || (inside ? '#7d848f' : '#4c525c');
+    ctx.fill();
+    ctx.strokeStyle = '#2a2d33';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+
+    // Rivet seams along the shell
+    ctx.fillStyle = '#20232a';
+    for (let i = 0; i < pts.length; i += 2) {
+      ctx.beginPath();
+      ctx.arc(top[i].x, top[i].y + 6, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    if (inside) {
+      // Floor line along the path: the shell fill runs below the road line,
+      // so without this the car looks like it's driving on nothing.
+      ctx.strokeStyle = '#3a4049';
+      ctx.lineWidth = 10;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < pts.length; i++) {
+        i === 0 ? ctx.moveTo(pts[i].x, pts[i].y) : ctx.lineTo(pts[i].x, pts[i].y);
+      }
+      ctx.stroke();
+      // Interior rings sliding along the tube sell the hollow-cylinder read.
+      const t = this.engine.timing.timestamp / 1000;
+      ctx.strokeStyle = 'rgba(20,22,26,0.5)';
+      ctx.lineWidth = 5;
+      let acc = -((t * 90) % 70);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[i], p1 = pts[i + 1];
+        const dx = p1.x - p0.x, dy = p1.y - p0.y;
+        const segLen = Math.hypot(dx, dy) || 1;
+        const nx = -dy / segLen, ny = dx / segLen;
+        for (let d = acc; d < segLen; d += 70) {
+          if (d < 0) continue;
+          const tt = d / segLen;
+          const rx = p0.x + dx * tt, ry = p0.y + dy * tt;
+          ctx.beginPath();
+          ctx.moveTo(rx - nx * radius * 1.9, ry - ny * radius * 1.9);
+          ctx.lineTo(rx + nx * radius * 0.3, ry + ny * radius * 0.3);
+          ctx.stroke();
+        }
+        acc -= segLen;
+      }
+    }
+
+    // Open end caps: dark hollow mouths so the tube reads as a pipe even
+    // from outside.
+    for (const p of [pts[0], pts[pts.length - 1]]) {
+      ctx.save();
+      ctx.translate(p.x, p.y - radius * 0.8);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 16, radius * 1.1, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#0e0f11';
+      ctx.fill();
+      ctx.strokeStyle = '#2a2d33';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  // Traces a flat (gently rippled) liquid surface across the top and the
+  // REAL terrain curve (floor, from _sludge()) across the bottom — so the
+  // fill only ever occupies the space above the ground, never the ground
+  // itself, and automatically matches whatever shape the dip actually is.
+  _sludgePath(wetX0, wetX1, top, floor, t) {
+    const path = new Path2D();
+    let started = false;
+    for (let sx = wetX0; sx <= wetX1; sx += 14) {
+      const y = top + Math.sin(sx * 0.045 + t * 1.1) * 3;
+      started ? path.lineTo(sx, y) : path.moveTo(sx, y);
+      started = true;
+    }
+    path.lineTo(wetX1, top + Math.sin(wetX1 * 0.045 + t * 1.1) * 3);
+    for (let i = floor.length - 1; i >= 0; i--) path.lineTo(floor[i].x, floor[i].y);
+    path.closePath();
+    return path;
+  }
+
+  _renderSludge(ctx, { wetX0, wetX1, top, floor }) {
+    if (wetX1 - wetX0 < 1 || floor.length < 2) return;
+    const t = this.engine.timing.timestamp / 1000;
+    ctx.save();
+    ctx.fillStyle = texPattern('mud', '#6b7a2e', 170) || '#565f22';
+    ctx.fill(this._sludgePath(wetX0, wetX1, top, floor, t));
+    // Surface line (the flat/rippled water line, not the ground)
+    ctx.strokeStyle = '#8a9c3c';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    for (let sx = wetX0; sx <= wetX1; sx += 14) {
+      const y = top + Math.sin(sx * 0.045 + t * 1.1) * 3;
+      sx === wetX0 ? ctx.moveTo(sx, y) : ctx.lineTo(sx, y);
+    }
+    ctx.stroke();
+    // Ooze bubbles near the surface
+    ctx.fillStyle = '#b8c25a';
+    for (let k = 0; k < 4; k++) {
+      const px = wetX0 + ((k * 71 + 23) % Math.max(1, wetX1 - wetX0 - 20)) + 10;
+      const cycle = (t * 0.6 + k * 0.4) % 1;
+      ctx.globalAlpha = 1 - cycle;
+      ctx.beginPath();
+      ctx.arc(px, top - 2 - cycle * 10, 2.5 + cycle * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Translucent front pass so a submerged car reads as coated in goo — same
+  // ground-hugging shape as the main fill.
+  _renderSludgeFront(ctx, { wetX0, wetX1, top, floor }) {
+    if (wetX1 - wetX0 < 1 || floor.length < 2) return;
+    const t = this.engine.timing.timestamp / 1000;
+    ctx.save();
+    ctx.globalAlpha = 0.32;
+    ctx.fillStyle = '#5b6b26';
+    ctx.fill(this._sludgePath(wetX0, wetX1, top, floor, t));
+    ctx.restore();
+  }
+
+  // Idle: coiled flat into the floor, reads as just a yellow warning line.
+  // On a fresh contact (pad.plugin.lastRider, stamped by PhysicsWorld) the
+  // coil pops up fast then eases back down flat over FIRE_MS.
+  _renderSpring(ctx, { x, groundY, w, pad }) {
+    const now = this.engine.timing.timestamp;
+    const FIRE_MS = 500;
+    const elapsed = now - (pad.plugin.lastRider ?? -Infinity);
+    let extend = 0;
+    if (elapsed >= 0 && elapsed < FIRE_MS) {
+      const t = elapsed / FIRE_MS;
+      extend = t < 0.2 ? t / 0.2 : Math.max(0, 1 - (t - 0.2) / 0.8);
+    }
+    ctx.save();
+    // Base plate covers the (low) physics pad exactly, so what you roll
+    // over is what you see.
+    ctx.fillStyle = '#3a3d45';
+    ctx.fillRect(x - w / 2, groundY - 14, w, 18);
+    if (extend <= 0.03) {
+      // Idle: just the coil's top edge, flush with the plate.
+      ctx.strokeStyle = '#e8c34a';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x - w / 2 + 10, groundY - 12);
+      ctx.lineTo(x + w / 2 - 10, groundY - 12);
+      ctx.stroke();
+    } else {
+      const coilH = 70 * extend;
+      const coils = 5;
+      const cw = w * 0.7;
+      ctx.strokeStyle = '#c0392b';
+      ctx.lineWidth = 7;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let i = 0; i <= coils * 2; i++) {
+        const px = x - cw / 2 + (cw * i) / (coils * 2);
+        const py = groundY - 12 - (coilH * i) / (coils * 2);
+        const jog = (i % 2 === 0 ? -1 : 1) * cw * 0.12;
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px + jog, py);
+      }
+      ctx.stroke();
+      ctx.fillStyle = '#e8c34a';
+      ctx.fillRect(x - w / 2 + 6, groundY - 12 - coilH - 8, w - 12, 10);
+    }
+    ctx.restore();
+  }
+
+  _renderBlade(ctx, { ax, ay, groundY, len, thickness = 30, blade }) {
+    const half = thickness / 2;
+    ctx.save();
+    // Support post: mounting bracket above the hub, full column down to the
+    // ground below it — a proper post, not just a stub between hub and floor.
+    const postTop = ay - 55;
+    ctx.fillStyle = '#454b57';
+    ctx.fillRect(ax - 12, postTop, 24, Math.max(0, groundY - postTop));
+    ctx.fillStyle = '#33363d';
+    ctx.fillRect(ax - 22, postTop - 16, 44, 18);
+    // Everything from here is clipped to ABOVE the road line: the sweep
+    // circle touches the floor, so an unclipped wash would paint a gray arc
+    // across the terrain, and the blade tip (which overlaps the floor by
+    // ~15px so no gap survives at the bottom of the sweep) would slice
+    // through the surface stripe instead of vanishing into it.
+    ctx.beginPath();
+    ctx.rect(ax - len / 2 - 24, ay - len / 2 - 24, len + 48, groundY - (ay - len / 2 - 24));
+    ctx.clip();
+    // Danger disc: the full swept area, faint fill + thin rim.
+    ctx.fillStyle = 'rgba(200, 210, 220, 0.10)';
+    ctx.beginPath();
+    ctx.arc(ax, ay, len / 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(200, 210, 220, 0.3)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    // Blade bar
+    ctx.save();
+    ctx.translate(blade.position.x, blade.position.y);
+    ctx.rotate(blade.angle);
+    ctx.fillStyle = '#c7ced9';
+    ctx.fillRect(-len / 2, -half, len, thickness);
+    ctx.strokeStyle = '#5a606b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-len / 2, -half, len, thickness);
+    ctx.fillStyle = '#8a919c';
+    for (const s of [-1, 1]) {
+      for (let tx = -len / 2 + 6; tx < len / 2 - 6; tx += 18) {
+        ctx.beginPath();
+        ctx.moveTo(tx, s * half);
+        ctx.lineTo(tx + 9, s * half);
+        ctx.lineTo(tx + 4.5, s * (half + 9));
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+    // Hub cap (drawn last, on top of the blade center)
+    ctx.beginPath();
+    ctx.arc(ax, ay, 15, 0, Math.PI * 2);
+    ctx.fillStyle = '#2b2e35';
+    ctx.fill();
+    ctx.strokeStyle = '#0f1114';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Down-elevator: a hydraulic platform that sinks into its shaft. All the
+  // machinery lives BELOW the deck (piston from the shaft floor) — nothing
+  // is drawn across the mouth at car height, so the car never appears to
+  // drive through structure on its way onto the platform.
+  _renderElevator(ctx, { body, x0, y0, w, drop }) {
+    const px = body.position.x, py = body.position.y - 11;
+    const floorY = y0 + drop;
+    ctx.save();
+    // Shaft void the platform descends through, so the hole reads clearly
+    // instead of the platform looking like it floats in open air.
+    const grad = ctx.createLinearGradient(0, y0, 0, floorY);
+    grad.addColorStop(0, '#16171b');
+    grad.addColorStop(1, '#050506');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x0, y0, w, drop);
+    // Guide rails
+    ctx.fillStyle = '#3a3d45';
+    ctx.fillRect(x0 - 8, y0 - 6, 12, drop + 6);
+    ctx.fillRect(x0 + w - 4, y0 - 6, 12, drop + 6);
+    // Hazard stripes across the mouth (clamped to exactly w)
+    for (let sx = 0, i = 0; sx < w; sx += 24, i++) {
+      ctx.fillStyle = i % 2 ? '#1c1e22' : '#e8c34a';
+      ctx.fillRect(x0 + sx, y0 - 10, Math.min(24, w - sx), 10);
+    }
+    // Hydraulic piston: fixed outer sleeve rising from the shaft floor,
+    // inner rod telescoping up to the platform underside.
+    const sleeveH = Math.max(40, drop * 0.4);
+    ctx.fillStyle = '#33363d';
+    ctx.fillRect(px - 30, floorY - 12, 60, 12); // base plate
+    ctx.fillStyle = '#454b57';
+    ctx.fillRect(px - 17, floorY - sleeveH, 34, sleeveH);
+    ctx.fillStyle = '#7d8798';
+    ctx.fillRect(px - 8, py + 22, 16, Math.max(0, floorY - sleeveH - (py + 22)));
+    // Platform deck
+    ctx.fillStyle = '#6a7181';
+    ctx.fillRect(px - w / 2 + 4, py, w - 8, 22);
+    ctx.fillStyle = '#e8c34a';
+    ctx.fillRect(px - w / 2 + 4, py, w - 8, 5);
     ctx.restore();
   }
 

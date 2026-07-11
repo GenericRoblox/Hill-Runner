@@ -66,7 +66,7 @@ export const VEHICLES = {
     name: 'Sports Car',
     icon: '🏎️',
     desc: 'Fast and low. Loves big ramps and flat landings — hates rough ground.',
-    price: 4000,
+    price: 8000,
     // sports_car-sprite.png is 800x319.
     body: {
       width: 135, height: 50, wheelRadius: 15, wheelBase: 75, density: 0.0032,
@@ -106,7 +106,7 @@ export const VEHICLES = {
     name: 'Motorbike',
     icon: '🏍️',
     desc: 'Narrow, light, incredible air control. Unstable landings — flips punish hard.',
-    price: 6500,
+    price: 4000,
     // motorcycle-sprite.png is 513x230 → 72x32 (sprite includes the rider).
     body: {
       width: 72, height: 32, wheelRadius: 13, wheelBase: 52, density: 0.0020,
