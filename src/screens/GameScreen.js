@@ -2,6 +2,7 @@
 
 import { PhysicsWorld } from '../physics/PhysicsWorld.js';
 import { texPattern } from '../ui/Textures.js';
+import { ParticleSystem, buildTireProfiles } from '../ui/Particles.js';
 import { getSprite } from '../ui/Sprites.js';
 import { Terrain } from '../physics/Terrain.js';
 import { Obstacles } from '../physics/Obstacles.js';
@@ -70,6 +71,8 @@ export class GameScreen {
     this.obstacleSet = new Obstacles(this.level, this.physics);
     this.car = new Car(this.stats, this.level.startX, this.level.startY);
     this.car.addTo(this.physics);
+    this.particles = new ParticleSystem();
+    this.tireProfiles = buildTireProfiles(this.worldDef);
     window.__car = this.car; // dev hook: console access for physics tuning
     this.camera = new Camera(this.canvas);
     this.time = 0;
@@ -147,6 +150,9 @@ export class GameScreen {
         sound.thud();
       }
 
+      this._emitTireSpray();
+      this.particles.update(STEP_MS / 1000);
+
       if (verdict === 'stuck') return this._fail('Flipped and stuck!');
       if (verdict === 'sank') return this._fail('Sank into open water!');
       if (verdict === 'melted') {
@@ -170,6 +176,22 @@ export class GameScreen {
 
     sound.updateEngine(this.car.speed(), inputState.gas);
     this.camera.follow(this.car.position(), this.car.velocity(), dtMs / 1000);
+  }
+
+  // Kick surface-matched debris off any grounded, rotating wheel. Surface
+  // kind comes from the wheel's freshest contact friction (mud 0.1, ice 0.05
+  // vs ~0.85 road — same signal Car.update uses for terrain grip).
+  _emitTireSpray() {
+    const now = this.physics.timestamp();
+    for (const w of this.car.wheels) {
+      if (now - w.plugin.lastContact > 90) continue;      // airborne
+      if (Math.abs(w.angularVelocity) < 0.06) continue;   // not rotating
+      const f = w.plugin.contactFriction;
+      const prof = f !== undefined && f < 0.075 ? this.tireProfiles.ice
+        : f !== undefined && f < 0.3 ? this.tireProfiles.mud
+        : this.tireProfiles.normal;
+      this.particles.emitTireSpray(w, w.angularVelocity, prof);
+    }
   }
 
   _fail(reason) {
@@ -265,6 +287,7 @@ export class GameScreen {
     this.obstacleSet.render(ctx);
     this._drawFinish(ctx);
     this._drawCar(ctx);
+    this.particles.render(ctx);
     this.obstacleSet.renderOverlay(ctx); // tree canopies hide a snagged car
     ctx.restore();
 
