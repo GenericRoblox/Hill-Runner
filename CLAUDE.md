@@ -1,0 +1,69 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+A 2D physics-based driving platformer ("Hill Climb"-style) built to `SPEC.md`. Plain HTML5/Canvas + vanilla JS ES modules, no build step, no npm. Physics is Matter.js v0.19.0, vendored at `lib/matter.min.js` and loaded as a classic script before the module entry point (exposes global `Matter`).
+
+Scope: Worlds 1–5 (Farm, Town, City, Mines, Castle) fully playable, 10 levels each; each world unlocks by starring the previous world's final level. World 6 (Factory) is a locked placeholder. Turbo/Gems/ghost-mode/gamepad are deliberate v1 omissions per spec stretch goals.
+
+Look: cartoon UI. Menus are DOM styled by `style.css` (Beachday display font from `font/`, wood/grass boards, toy-block buttons); in-game terrain and most obstacles are filled with tinted tile patterns from `textures/` via `src/ui/Textures.js` (`texPattern(name, multiplyTint, tileSizePx, desat)` — returns null until loaded, callers keep a flat-color fallback; `desat` grayscales before tinting, how the teal `liquid` tile becomes water/lava/acid). Patterns anchor to the current canvas transform — fill MOVING bodies (press blocks, planks, boulders) in translated local coordinates or the texture scrolls through them instead of riding along, and fills made inside a ROTATED context must use `texUpright(name, tint, size, angleRad, desat)` (counter-rotates the tile grid so textures stay upright on screen; plain `texPattern` resets the shared pattern to upright). Per-world fills come from the `tex` entry in `WORLDS`. Backgrounds (sky, parallax, cave ceiling) stay untextured by design. Some source tiles have watermarks/non-seamless edges; `Textures.js` crops them per its `CROP` map.
+
+## Commands
+
+```powershell
+# Run — serve statically from the project root (ES modules won't load via file://)
+python -m http.server 8000        # then open http://localhost:8000
+
+# Physics regression test: a bot drives every level headlessly.
+# With the server running, open /test-sim.html in a browser, or headless:
+& "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe" --headless=new --disable-gpu `
+  --virtual-time-budget=150000 --dump-dom "http://localhost:8000/test-sim.html"
+```
+
+Debug helpers: `/debug-sim.html?world=4&level=9&tier=t3&from=6` traces one bot run (x/y/vx/vy/grounded per 0.1 s — the fastest way to diagnose a failing level). The game itself takes dev deep-links: `index.html?screen=garage`, or `?world=4&level=2&bot=1&warp=7` (bot holds gas, warp fast-forwards ~7 s — good for `--screenshot` visual checks).
+
+There is no Node.js on this machine — verify JS through the browser (headless Edge as above). No linter or unit-test framework; `test-sim.html` is the test suite.
+
+**Reading sim results:** rows are prefixed F (Farm) / T (Town) / C (City) / M (Mines) / K (Castle/keep) with the vehicle/tier in brackets. Expect `WIN` everywhere at each world's primary tier (Town 1–2, City 2–3, Mines 3/maxed, Castle 3/maxed) except Farm 9 stock (its gaps assume the ~800-coin engine tier 1). Known noise: City tier-2 C3/C8 and the maxed C10 spot-check can fail late — since ball hits became directional the bot survives bumps but can get shoved into downstream hazards; humans recover fine. The bot is deliberately naive, so its results are a *lower bound* on playability: a level the bot wins is beatable; one it fails may still be fine for humans. Rerun after touching physics constants, vehicle stats, level geometry, or obstacles.
+
+## Architecture
+
+**Data-driven core** — `src/data/` defines everything gameplay-numeric:
+- `vehicles.js`: roster + 4 linear upgrade tiers per stat (engine/suspension/tires/brakes), resolved by `getStatsAtTiers()` into the flat stat block `Car` consumes
+- `levels.js`: Farm + Town + City + Mines levels (10 each) authored via the chainable `LevelBuilder` (y is down; ground baseline y=600; terrain = arrays of point "chains"; `gap()` breaks the chain to create a pit; `pothole()` is a sharp terrain notch; `roof(w)` is a `flat(w)` that also records a building span in `level.buildings`, which `GameScreen._drawBuildings` renders as a facade — cornice, walls, windows — beneath the rooftop). Obstacle set-pieces (`ramp()`, `seesaw()`, `ropeBridge()`, `mudDip()`, `speedBumps()`, `tree()`, the City set: `oilSlick()`, `wreckingBall()`, `press()`, `fan()`, `water()`, `craneLift()`, and the Mines set: `rockfallPit()`, `crumbleBridge()`, `moltenPit()`, `icePatch()`, `jumpHole()`, `tireStack()`, and the Castle set: `fireballPit()`, `spikeStrip()`, `beam()`, `arrowVolley()`, `spikyBall()`) register defs that `physics/Obstacles.js` turns into bodies per run — ramps/seesaws/bumps/oil slicks/presses/tire stacks/spike strips/beams/arrow volleys need flat ground laid beneath them, `ropeBridge()`/`water()`/`craneLift()`/`rockfallPit()`/`crumbleBridge()`/`moltenPit()`/`fireballPit()`/`jumpHole()` cut their own pits, `tree()` trunks are background art with a sensor canopy overhead. `craneLift()` also drops a far-shaft wall so the car stays aboard; press blocks, lift platforms, rockfall boulders, fireballs, arrow-volley phases and crumble-plank releases are driven from a Matter `beforeUpdate` hook inside `Obstacles` (works in game and test-sim alike; lifts rise only while ridden, via `plugin.lastRider`; crumble planks go dynamic ~0.45 s after `plugin.lastRider` is first stamped; rockfall boulders and fireballs cycle parked → in flight → reparked on `period`/`phase`)
+- `economy.js`: star and payout rules
+
+Adding a level or vehicle is data-only; adding a world means a new `WORLDS` entry with `playable: true` (plus `sky`/`groundColor`/`grassColor`/`parallax`/`tex`; `cave: true` draws the screen-space tunnel-roof backdrop in `GameScreen._drawCaveCeiling`).
+
+**Screens** — `src/core/ScreenManager.js` swaps screen objects (`enter/exit/update/render`) via `screens.show(name, params)`. Menus (Home, WorldSelect, LevelSelect, Garage, Upgrade) are DOM built into `#menu-root` with the `el()` helper; only `GameScreen` renders to canvas. `InputManager` unifies keyboard + multi-touch into a single Gas/Brake state.
+
+**Game loop** — single rAF in `src/main.js`; `GameScreen.update` runs a fixed-step accumulator at 60 Hz calling `car.update()` (input + fail checks) before each `physics.step()`. Win = chassis past `level.finishX`; fail = below `level.deathY` or `Car.update` returns `'stuck'` (inverted + slow for a 1.5 s grace window).
+
+**Save data** — one JSON object in localStorage (`hillrunner_save_v1`) behind the `saveData` singleton: coins, per-vehicle upgrades, stars, best times. Level N unlocks when level N−1 has ≥1 star. New fields must merge over defaults in `load()` so old saves survive.
+
+## Physics conventions (the part that will bite you)
+
+- Matter stores velocity in px/step and angular velocity in **radians per 16.6 ms step**, not per second. Vehicle stats are authored in rad/s and converted with `PER_STEP = 1/60` inside `Car.js`. Speeds read off bodies are per-step.
+- Screen coords are y-down, so positive angle = clockwise = nose-down for a right-facing car. Gas in air = nose up = **negative** angular velocity.
+- Wheel spin alone barely moves the car (the friction solver eats small per-step increments) — propulsion is `Body.applyForce` on the chassis scaled by engine torque, with wheel spin-up layered on for feel/slip. Slopes steeper than ~40° are unclimbable (friction limit); level geometry must respect that.
+- Suspension = two spring constraints per wheel anchored at the **chassis top edge**. Anchoring lower makes the triangle bistable — wheels flip above the chassis on hard landings. Don't "simplify" the anchor points.
+- Grounded state comes from collision events (`PhysicsWorld` stamps `body.plugin.lastContact`), not raycasts. A wheel counts as grounded for 90 ms after its last terrain contact.
+- Terrain chains become thin rotated static rectangles offset half a thickness below the surface line; walls/beams are plain static rects. Every drivable surface — including *dynamic* obstacle planks (seesaw, rope bridge) — is labeled `'terrain'`, because grounded/stuck detection keys on that label.
+- Seesaw planks must spawn pre-tilted with the approach end on the ground (Obstacles.js does this); a horizontal plank presents its edge at bumper height and hard-stops the car.
+- Tree canopies are `isSensor` bodies labeled `'canopy'`; `Car.update` bleeds ~10%/step of velocity while overlapping one and suppresses the stuck-fail timer (a snagged car always drops out). Place canopies so the drop-out point is solid ground, not a pit — snags should slow, not kill.
+- Sensor zones generalize the canopy trick: `PhysicsWorld` stamps `plugin.last<Zone>` + `plugin.zone<Zone>` on wheels/chassis for labels `canopy`/`oil`/`updraft`/`water`; `Car.update` applies the effect (oil = signed horizontal shove from the zone's `plugin.push`; updraft = lift capped at a ~3.5 px/step terminal rise rate and tilted 30% forward — both caps prevent a slow car being tossed sky-high or hovering forever; water = heavy drag, then a `'sank'` verdict after 0.55 s submerged, so fast skims survive).
+- Ballistic arcs bleed forward speed fast (chassis `frictionAir` 0.01/step ⇒ ~2 s airborne loses ~2/3 of vx), so a car launched too high lands nearly vertically. Never stack a ramp AND a fan on the same gap, and keep water/pits out of the far landing zone of any big-air feature; conversely a fan inside a gap is a good rescue for undershot jumps since the cap makes it gentle.
+- Wrecking balls (and Castle's short-chain `spikyBall()` flails) are free pendulums (dense circle + stiff cable constraint, no damping) labeled `'ball'` — not terrain, so they knock the car without counting as ground. Keep other set-pieces out of the swing arc (±len·sin(angle0) around the anchor). Lethality is DIRECTIONAL (`ballStrike` in PhysicsWorld): a ball kills only when its own velocity toward the car exceeds 4 px/step; ramming a slow ball, or catching up to one swinging away, is a heavy shove instead. This is deliberate — a car crossing behind a swing accelerates faster than the ball and would otherwise die rear-ending it.
+- Castle hazards: `fireballPit()` is a `moltenPit` plus a lethal-in-flight sensor fireball (label `'fireball'`, dynamic sensor so terrain never stops it; flight ≈1.9 s of the 3.6 s period — Matter's effective gravity on it is weaker than the ballistic math suggests, so measure, don't derive). `arrowVolley()` is a static sensor lethal while `plugin.raining` (mover-toggled; kill zone is 24 px narrower than the visual curtain). `spikeStrip()` is a thin sensor (label `'spikes'`) → instant `'popped'` verdict; always give it a ramp launch whose lip sits ~20 px before the strip — a crest launch LANDS on the strip. `beam()` is a dynamic terrain-labeled timber that needs a fast hit to topple and can bridge a ~140 gap when standing just before the edge.
+- Castle spacing rules (same float logic as the Mines rules below): fireball pits need ~700 px of flat approach (braking must finish short of the lip — parking on it catapults the car); ramp+strip sections need ~1050 px before the next ramp (the launch float carries ~850 past the lip); keep ~1000 px between an arrow volley and the next timing hazard so backing off one doesn't reverse into the other.
+- Sensor zones also cover `molten` (lava/acid: near-instant `'melted'` verdict, ~0.12 s grace for a lip graze — no water-style skimming, so `moltenPit()` resumes its far edge `dy` lower; undershooting a level exit would always graze the pool) and `bouncer` (tire stacks: `Car.update` launches the car with vy scaled by landing impact, capped at 16.5 px/step ≈ 390 px rise, tilted slightly forward, 500 ms cooldown — a stalled car can trampoline its way up, so basins are never soft-locks). Bouncer contact also counts as ground contact (you can drive on/off a stack).
+- Rockfall debris is lethal only while falling (`label 'debris' && !isStatic`); parked in its chute it's scenery. Ice chains (`surface: 'ice'`) get near-zero friction — no drive, no brakes — so author them flat/downhill with speed carried in, never uphill.
+- **The float artifact drives Mines-style level spacing:** any hard landing (drop, pit crossing, launch lip) can leave the car "floating" ~100–150 px above the road for ~500 px while the player (or bot) works the air-control, because pumping chassis angular velocity against the spring-mounted wheels sheds most of gravity. This is baked into the tuned feel — design around it, don't "fix" `Car.js`. Consequences: `jumpHole()` teeth sit exactly at float height, so holes need ~550+ px of clean flat approach and must never follow a landing closely; `moltenPit()` must be entered from FLAT road (an up-lip launches fast cars into a long float) and needs its landing float to settle before the next lip; a rockfall pit needs ~600 px of braking room after any jump landing (the bot brakes from `~170 + vx·30` px out, and parking on a crumble bridge or reversing back onto one kills you — keep bridges well outside that window).
+- Tire-stack basins: place the stack far enough in (~320 px for a fast entry) that cars falling off the drop edge land ON it, and keep the headwall ~200 px past the stack so the first big bounce clears it; a fast entry that smacks the headwall still recovers by trampolining.
+- World gating: `saveData.isWorldUnlocked(id)` requires ≥1 star on the previous world's final level; a world's first level keys off that too.
+
+## Tuning knobs
+
+Feel lives in three places: `engine.gravity.y` in `PhysicsWorld.js`, the stat tables in `vehicles.js`, and `DRIVE_FORCE` / spin-up multipliers in `Car.js`. These have been hand-tuned since the initial build — treat current values as intentional, and rerun `test-sim.html` after changing them (level pass/fail expectations shift with tuning).

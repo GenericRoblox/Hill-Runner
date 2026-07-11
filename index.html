@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Hill Runner</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <div id="menu-root"></div>
+
+  <div id="pause-overlay" class="overlay hidden">
+    <div class="panel">
+      <h2>Paused</h2>
+      <button id="btn-resume" class="btn primary">Resume</button>
+      <button id="btn-restart" class="btn">Restart</button>
+      <button id="btn-quit" class="btn">Quit to Level Select</button>
+    </div>
+  </div>
+
+  <div id="result-overlay" class="overlay hidden">
+    <div class="panel" id="result-panel"></div>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+
+  <script src="lib/matter.min.js"></script>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
