@@ -30,20 +30,26 @@ export class GameScreen {
     this.usesCanvas = true;
     this.state = 'idle';
 
-    // Pause overlay buttons
-    document.getElementById('btn-resume').addEventListener('click', () => this.resume());
+    // Pause overlay buttons. The DOM is shared and GameScreen is subclassed
+    // (infinite mode), so every instance registers here — each handler must
+    // only act while ITS screen is the current one.
+    document.getElementById('btn-resume').addEventListener('click', () => {
+      if (screens.current === this) this.resume();
+    });
     document.getElementById('btn-restart').addEventListener('click', () => {
+      if (screens.current !== this) return;
       this._hidePause();
       this.restart();
     });
     document.getElementById('btn-quit').addEventListener('click', () => {
+      if (screens.current !== this) return;
       this._hidePause();
       this.quit();
     });
 
     // Desktop pause button click (top-right of canvas)
     canvas.addEventListener('mousedown', (e) => {
-      if (screens.currentName !== 'game') return;
+      if (screens.current !== this) return;
       if (e.offsetX > canvas.width - 70 && e.offsetY < 70) this.togglePause();
     });
   }
@@ -354,6 +360,7 @@ export class GameScreen {
       targetTime: this.level.targetTime,
       sludge: this.car.sludgeLethality,
       width,
+      ...(this._hudExtras ? this._hudExtras() : null), // infinite mode: distance etc.
     });
 
     if (input.touchActive) {

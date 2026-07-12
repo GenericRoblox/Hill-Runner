@@ -9,7 +9,9 @@ const MUD_FRICTION = 0.1;
 const ICE_FRICTION = 0.05; // near-frictionless: no drive, no brakes — coast it
 
 export class Terrain {
-  constructor(level, world) {
+  // startWall: false for streamed chunks (infinite mode) — the reverse-stop
+  // wall only belongs at the very start of a run, not at every chunk seam.
+  constructor(level, world, { startWall = true } = {}) {
     this.level = level;
     this.bodies = [];
 
@@ -54,14 +56,16 @@ export class Terrain {
     }
 
     // Invisible wall at level start so the player can't reverse out of the world.
-    const first = level.chains[0][0];
-    const startWall = Bodies.rectangle(first.x - 40, first.y - 200, 40, 500, {
-      isStatic: true,
-      friction: 0.1,
-      label: 'terrain',
-    });
-    startWall.friction = 0.1; // see static-friction note above
-    this.bodies.push(startWall);
+    if (startWall && level.chains.length) {
+      const first = level.chains[0][0];
+      const wall = Bodies.rectangle(first.x - 40, first.y - 200, 40, 500, {
+        isStatic: true,
+        friction: 0.1,
+        label: 'terrain',
+      });
+      wall.friction = 0.1; // see static-friction note above
+      this.bodies.push(wall);
+    }
 
     for (const b of this.bodies) world.add(b);
     this.world = world;

@@ -10,12 +10,18 @@ import { getObstacleType, defaultParams } from '../data/customLevels.js';
 
 const cache = new Map();
 
-// Sky-high set-pieces get compacted defs so the icon isn't a thin sliver.
-// Purely cosmetic — placement always uses the real builder.
+// Sky-high or road-wide set-pieces get compacted defs so the icon isn't a
+// thin sliver. Purely cosmetic — placement always uses the real builder.
 const TWEAKS = {
   rockfall: defs => { defs[0].topY = -190; },
   scrap: defs => { defs[0].topY = -210; },
   fan: defs => { defs[0].h = 230; },
+  bumps: defs => { defs[0].count = 3; defs[0].spacing = 56; },
+  oil: defs => { defs[0].w = 110; },
+  conveyor: defs => { defs[0].w = 150; },
+  ropebridge: defs => { defs[0].width = 190; },
+  crumble: defs => { defs[0].width = 170; },
+  spikes: defs => { defs[0].w = 90; },
   fireballpit: defs => {
     // Park the fireball mid-leap above the pool so it shows in the icon.
     const f = defs.find(d => d.type === 'fireball');
@@ -91,7 +97,7 @@ function generate(t) {
   const icon = document.createElement('canvas');
   icon.width = icon.height = S;
   const ictx = icon.getContext('2d');
-  const scale = Math.min((S - 4) / cw, (S - 4) / ch, 1.2);
+  const scale = Math.min((S - 4) / cw, (S - 4) / ch, 2.4);
   const dw = cw * scale, dh = ch * scale;
   ictx.imageSmoothingQuality = 'high';
   ictx.drawImage(cv, x0, y0, cw, ch, (S - dw) / 2, (S - dh) / 2, dw, dh);

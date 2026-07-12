@@ -84,21 +84,36 @@
       await frames(3);
       log('water paint: ' + ed.lvl.cells[31].liquid + (ed.lvl.cells[31].liquid === 'water' ? ' OK' : ' FAIL'));
 
-      // 4. Obstacle mode: place a ramp (slot 0) at cell ~40
+      // 4. Obstacle mode: place a ramp (slot 0) at cell ~40, anchored on the
+      // ground line (row 0); also verify free placement stores the row.
       ed._setMode('obstacle');
       ed.slot = 0;
       await frames(2);
-      mouse('mousemove', sx(40 * 60), sy(560), 0, window);
-      mouse('mousedown', sx(40 * 60), sy(560));
-      mouse('mouseup', sx(40 * 60), sy(560), 0, window);
+      mouse('mousemove', sx(40 * 60), sy(600), 0, window);
+      mouse('mousedown', sx(40 * 60), sy(600));
+      mouse('mouseup', sx(40 * 60), sy(600), 0, window);
       await frames(3);
       log('place: ' + ed.lvl.obstacles.length + (ed.lvl.obstacles.length === 1 ? ' OK' : ' FAIL')
-        + ' type=' + (ed.lvl.obstacles[0] || {}).type);
+        + ' type=' + (ed.lvl.obstacles[0] || {}).type
+        + ' h=' + (ed.lvl.obstacles[0] || {}).h + ((ed.lvl.obstacles[0] || {}).h === 0 ? ' OK' : ' FAIL'));
+
+      // 4b. Free placement in the air: place another ramp 4 rows up, then delete it.
+      mouse('mousemove', sx(50 * 60), sy(500), 0, window);
+      mouse('mousedown', sx(50 * 60), sy(500));
+      mouse('mouseup', sx(50 * 60), sy(500), 0, window);
+      await frames(2);
+      const air = ed.lvl.obstacles[1];
+      log('air place: h=' + (air || {}).h + ((air || {}).h === 4 ? ' OK' : ' FAIL'));
+      mouse('mousemove', sx(50 * 60), sy(480), 2, window);
+      mouse('mousedown', sx(50 * 60), sy(480), 2);
+      mouse('mouseup', sx(50 * 60), sy(480), 2, window);
+      await frames(2);
+      log('air delete: ' + ed.lvl.obstacles.length + (ed.lvl.obstacles.length === 1 ? ' OK' : ' FAIL'));
 
       // 5. Click the placed obstacle -> params panel opens
-      mouse('mousemove', sx(40 * 60), sy(560), 0, window);
-      mouse('mousedown', sx(40 * 60), sy(560));
-      mouse('mouseup', sx(40 * 60), sy(560), 0, window);
+      mouse('mousemove', sx(40 * 60), sy(590), 0, window);
+      mouse('mousedown', sx(40 * 60), sy(590));
+      mouse('mouseup', sx(40 * 60), sy(590), 0, window);
       await frames(2);
       const panelOpen = !ed.paramsEl.classList.contains('hidden');
       log('params panel: ' + (panelOpen ? 'OK' : 'FAIL'));

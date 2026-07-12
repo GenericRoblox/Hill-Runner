@@ -10,6 +10,29 @@ export function showResult(r) {
   const p = panel();
   p.innerHTML = '';
 
+  if (r.infinite) {
+    // Infinite mode run summary: distance + coin breakdown.
+    p.appendChild(el('h2', { text: r.newBest ? '🏁 New Best!' : 'Run Over' }));
+    p.appendChild(el('div', { class: 'fail-reason', text: r.reason }));
+    p.appendChild(el('div', { class: 'big-stars', text: `${r.distM}m` }));
+    p.appendChild(el('div', { class: 'stat-line', text: `Best: ${r.bestM}m` }));
+    if (r.milestoneCoins > 0) {
+      p.appendChild(el('div', { class: 'stat-line', text: `New milestones: +${r.milestoneCoins} coins` }));
+    }
+    if (r.flips > 0) {
+      p.appendChild(el('div', { class: 'stat-line', text: `🔄 ${r.flips} flip${r.flips > 1 ? 's' : ''}: +${r.flipCoins} coins` }));
+    }
+    if (r.airCoins > 0) {
+      p.appendChild(el('div', { class: 'stat-line', text: `Air time ${r.airTime.toFixed(1)}s: +${r.airCoins} coins` }));
+    }
+    const total = (r.milestoneCoins || 0) + (r.flipCoins || 0) + (r.airCoins || 0);
+    if (total > 0) p.appendChild(el('div', { class: 'earn', text: `+${total} coins` }));
+    p.appendChild(el('button', { class: 'btn primary', text: 'Drive Again (R)', onclick: () => { hideResult(); r.onRetry(); } }));
+    p.appendChild(el('button', { class: 'btn', text: 'Infinite Menu', onclick: () => { hideResult(); r.onQuit(); } }));
+    overlay().classList.remove('hidden');
+    return;
+  }
+
   if (r.won) {
     p.appendChild(el('h2', { text: 'Level Complete!' }));
     p.appendChild(el('div', {

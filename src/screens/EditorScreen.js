@@ -802,21 +802,26 @@ export class EditorScreen {
   }
 
   _drawGrid(ctx, width, height) {
-    const x0 = Math.max(0, Math.floor(this.camX / CELL_W) * CELL_W);
-    const x1 = Math.min(this.lvl.length * CELL_W, this.camX + width / this.zoom);
-    const yTop = BASE_Y - 16 * UNIT_H;
-    const yBot = BASE_Y + 10 * UNIT_H;
+    // Cover the whole visible viewport (clipped to the level's x-span) so the
+    // grid never runs out while panning/zooming. BASE_Y is a multiple of
+    // UNIT_H, so lines land exactly on the height rows obstacles snap to.
+    const endX = this.lvl.length * CELL_W;
+    const vx0 = Math.max(0, this.camX);
+    const vx1 = Math.min(endX, this.camX + width / this.zoom);
+    const vy0 = this.camY;
+    const vy1 = this.camY + height / this.zoom;
+    if (vx1 <= vx0) return;
 
     ctx.lineWidth = 1 / this.zoom;
     ctx.strokeStyle = 'rgba(255,255,255,0.13)';
     ctx.beginPath();
-    for (let x = x0; x <= x1; x += CELL_W) {
-      ctx.moveTo(x, yTop);
-      ctx.lineTo(x, yBot);
+    for (let x = Math.ceil(vx0 / CELL_W) * CELL_W; x <= vx1; x += CELL_W) {
+      ctx.moveTo(x, vy0);
+      ctx.lineTo(x, vy1);
     }
-    for (let y = yTop; y <= yBot; y += UNIT_H) {
-      ctx.moveTo(Math.max(0, this.camX), y);
-      ctx.lineTo(x1, y);
+    for (let y = Math.floor(vy0 / UNIT_H) * UNIT_H; y <= vy1; y += UNIT_H) {
+      ctx.moveTo(vx0, y);
+      ctx.lineTo(vx1, y);
     }
     ctx.stroke();
 
@@ -824,16 +829,16 @@ export class EditorScreen {
     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
     ctx.lineWidth = 2 / this.zoom;
     ctx.beginPath();
-    ctx.moveTo(Math.max(0, this.camX), BASE_Y);
-    ctx.lineTo(x1, BASE_Y);
+    ctx.moveTo(vx0, BASE_Y);
+    ctx.lineTo(vx1, BASE_Y);
     ctx.stroke();
 
     // Death line
     ctx.strokeStyle = 'rgba(224, 82, 74, 0.6)';
     ctx.setLineDash([18, 12]);
     ctx.beginPath();
-    ctx.moveTo(Math.max(0, this.camX), this.compiled.deathY);
-    ctx.lineTo(x1, this.compiled.deathY);
+    ctx.moveTo(vx0, this.compiled.deathY);
+    ctx.lineTo(vx1, this.compiled.deathY);
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -849,14 +854,18 @@ export class EditorScreen {
   }
 
   _drawHover(ctx) {
-    if (!this.mouse.inWorld) return;
+    if (!this.mouse.inWorld) {
+      this._destroyGhost();
+      return;
+    }
     const cell = this.mouse.cell;
-    if (cell < 0 || cell >= this.lvl.length) return;
+    if (cell < 0 || cell >= this.lvl.length) {
+      this._destroyGhost();
+      return;
+    }
 
     if (this.mode === 'terrain') {
-      const deleting = this.stroke?.tool.kind === 'delete';
-      ctx.fillStyle = deleting ? 'rgba(224, 82, 74, 0.25)' : 'rgba(255, 198, 92, 0.22)';
-      ctx.fillRect(cell * CELL_W, BASE_Y - 16 * UNIT_H, CELL_W, 26 * UNIT_H);
+      this._drawTerrainHover(ctx, cell);
       return;
     }
 
@@ -871,6 +880,7 @@ export class EditorScreen {
     // Hovering an existing obstacle: highlight it instead of ghosting.
     const hit = this._obstacleAt(this.mouse.x, this.mouse.y);
     if (hit) {
+      this._destroyGhost();
       const f = this._footprint(hit);
       ctx.strokeStyle = 'rgba(255,255,255,0.8)';
       ctx.lineWidth = 2 / this.zoom;
@@ -878,20 +888,121 @@ export class EditorScreen {
       return;
     }
 
-    // Ghost preview of the would-be placement.
+    // Translucent preview of the would-be placement, drawn by the real
+    // set-piece renderer (see _ensureGhost).
     const place = this._placement();
-    if (!place) return;
-    const gx = place.cell * CELL_W;
-    const gw = place.span * CELL_W;
-    const gy = BASE_Y - groundHAt(this.lvl.cells, place.cell) * UNIT_H;
-    ctx.fillStyle = 'rgba(88, 191, 67, 0.18)';
-    ctx.fillRect(gx, gy - 260, gw, 300);
-    ctx.strokeStyle = 'rgba(88, 191, 67, 0.7)';
+    if (!place) {
+      this._destroyGhost();
+      return;
+    }
+    this._ensureGhost(place);
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    this._ghostSet.render(ctx, { x: 0, y: 0 });
+    this._ghostSet.renderOverlay(ctx);
+    const woodPat = texPattern('wood', '#c9985e', 170);
+    for (const wl of this._ghostWalls) {
+      ctx.fillStyle = woodPat || '#8a6b42';
+      ctx.fillRect(wl.cx - wl.w / 2, wl.cy - wl.h / 2, wl.w, wl.h);
+    }
+    ctx.restore();
+
+    // Anchor line marker so the snap row reads clearly.
+    const gy = BASE_Y - place.h * UNIT_H;
+    ctx.strokeStyle = 'rgba(255, 198, 92, 0.55)';
     ctx.lineWidth = 2 / this.zoom;
-    ctx.strokeRect(gx, gy - 260, gw, 300);
-    ctx.font = `${44 / this.zoom}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText(place.t.icon, gx + gw / 2, gy - 100);
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath();
+    ctx.moveTo(place.cell * CELL_W - 20, gy);
+    ctx.lineTo((place.cell + place.span) * CELL_W + 20, gy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Terrain-mode hover: a translucent preview of what a click would produce
+  // in the hovered column(s) — new surface line for shaping tools, tinted
+  // pool for liquids, tinted stripe for surface paints, red column for the
+  // delete drag.
+  _drawTerrainHover(ctx, cell) {
+    const w = getWorld(this.lvl.theme);
+    const X = i => i * CELL_W;
+    const Y = h => BASE_Y - h * UNIT_H;
+    const cells = this.lvl.cells;
+    const c = cells[cell];
+    const curH = c && c.h != null ? c.h : groundHAt(cells, cell);
+    const tool = this.stroke ? this.stroke.tool : TERRAIN_TOOLS[this.toolIndex];
+
+    // Faint column marker (always) — red while delete-dragging.
+    const deleting = tool.kind === 'delete';
+    ctx.fillStyle = deleting ? 'rgba(224, 82, 74, 0.22)' : 'rgba(255, 255, 255, 0.07)';
+    ctx.fillRect(X(cell), this.camY, CELL_W, this.canvas.height / this.zoom);
+    if (this.stroke) return; // while painting, the live terrain IS the preview
+
+    // Ground-shaping tools: ghost surface line + earth fill at the result height.
+    const ghostSurface = (pts) => {
+      ctx.save();
+      ctx.globalAlpha = 0.4;
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (const p of pts.slice(1)) ctx.lineTo(p.x, p.y);
+      for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i].x, pts[i].y + 130);
+      ctx.closePath();
+      ctx.fillStyle = w.groundColor;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (const p of pts.slice(1)) ctx.lineTo(p.x, p.y);
+      ctx.lineWidth = 12;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = w.grassColor;
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    if (tool.kind === 'flat') {
+      ghostSurface([{ x: X(cell) - CELL_W, y: Y(curH) }, { x: X(cell + 1) + CELL_W, y: Y(curH) }]);
+    } else if (tool.kind === 'slope') {
+      // Line through the anchor at the tool's rate, previewed over ±2 columns.
+      ghostSurface([
+        { x: X(cell - 2), y: Y(curH - 2 * tool.rate) },
+        { x: X(cell + 3), y: Y(curH + 3 * tool.rate) },
+      ]);
+    } else if (tool.kind === 'raise') {
+      const toH = curH + tool.dir;
+      ghostSurface([{ x: X(cell), y: Y(toH) }, { x: X(cell + 1), y: Y(toH) }]);
+      // Direction arrow
+      ctx.save();
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = '#ffc65c';
+      const ax = X(cell) + CELL_W / 2, ay = Y(Math.max(curH, toH)) - 34;
+      ctx.beginPath();
+      ctx.moveTo(ax, ay - 14 * tool.dir);
+      ctx.lineTo(ax - 12, ay + 8 * tool.dir);
+      ctx.lineTo(ax + 12, ay + 8 * tool.dir);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    } else if (tool.kind === 'liquid') {
+      const tints = {
+        water: 'rgba(63, 169, 224, 0.45)',
+        acid: 'rgba(140, 220, 60, 0.45)',
+        lava: 'rgba(255, 110, 40, 0.5)',
+        sludge: 'rgba(150, 130, 60, 0.5)',
+      };
+      ctx.fillStyle = tints[tool.liquid];
+      ctx.fillRect(X(cell), Y(curH), CELL_W, 120);
+    } else if (tool.kind === 'surface') {
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(X(cell), Y(curH));
+      ctx.lineTo(X(cell + 1), Y(curH));
+      ctx.lineWidth = 14;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = tool.surf === 'ice' ? '#b9dcea' : (texPattern('mud', '#6b4a2a', 160) || '#4a3520');
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 }
 

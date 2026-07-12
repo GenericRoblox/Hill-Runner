@@ -1,23 +1,43 @@
 // In-game HUD: timer, speed, level name, target time, pause button.
+// Infinite mode passes distanceM/bestM/flash instead of a finite target time.
 
-export function renderHUD(ctx, { time, speedKmh, levelName, targetTime, width, sludge = 0 }) {
+export function renderHUD(ctx, { time, speedKmh, levelName, targetTime, width, sludge = 0, distanceM = null, bestM = 0, flash = null }) {
   ctx.save();
   ctx.textBaseline = 'top';
 
-  // Timer (center top) — turns red past target time.
   ctx.font = '36px Beachday, "Segoe UI", sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillStyle = time > targetTime ? '#ff6c60' : '#ffffff';
   ctx.shadowColor = 'rgba(30,18,4,0.65)';
   ctx.shadowBlur = 0;
   ctx.shadowOffsetY = 3;
-  ctx.fillText(formatTime(time), width / 2, 14);
-  ctx.shadowOffsetY = 0;
-  ctx.shadowBlur = 6;
+  if (distanceM != null) {
+    // Infinite mode: distance front and center, time small below.
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`${Math.floor(distanceM)}m`, width / 2, 14);
+    ctx.shadowOffsetY = 0;
+    ctx.shadowBlur = 6;
+    ctx.font = '13px "Segoe UI", sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillText(bestM > 0 ? `best ${bestM}m · ${formatTime(time)}` : formatTime(time), width / 2, 56);
+  } else {
+    // Timer (center top) — turns red past target time.
+    ctx.fillStyle = time > targetTime ? '#ff6c60' : '#ffffff';
+    ctx.fillText(formatTime(time), width / 2, 14);
+    ctx.shadowOffsetY = 0;
+    ctx.shadowBlur = 6;
+    ctx.font = '13px "Segoe UI", sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillText(`⭐ target ${formatTime(targetTime)}`, width / 2, 56);
+  }
 
-  ctx.font = '13px "Segoe UI", sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  ctx.fillText(`⭐ target ${formatTime(targetTime)}`, width / 2, 56);
+  // Milestone / flip banner (infinite mode)
+  if (flash) {
+    ctx.font = '26px Beachday, "Segoe UI", sans-serif';
+    ctx.fillStyle = '#ffd75e';
+    ctx.shadowOffsetY = 2;
+    ctx.fillText(flash, width / 2, 84);
+    ctx.shadowOffsetY = 0;
+  }
 
   // Level name (top-left)
   ctx.textAlign = 'left';

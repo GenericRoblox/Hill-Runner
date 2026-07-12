@@ -7,7 +7,7 @@ const GROUND_Y = 600;
 
 // --- Terrain authoring helper -----------------------------------------------
 
-class LevelBuilder {
+export class LevelBuilder {
   constructor(startX = 0, startY = GROUND_Y) {
     this.chains = [];
     this.walls = [];
@@ -471,7 +471,7 @@ function level1() {
     name: '1. First Gear',
     concept: 'Gentle hills — get a feel for gas and brake.',
     targetTime: 32,
-    basePayout: 100,
+    basePayout: 150,
     recommended: 'pickup',
     friction: 0.85,
   });
@@ -491,7 +491,7 @@ function level2() {
     name: '2. Mind the Gap',
     concept: 'Your first jump — carry speed off the edge.',
     targetTime: 34,
-    basePayout: 130,
+    basePayout: 175,
     recommended: 'pickup',
     friction: 0.85,
   });
@@ -515,7 +515,7 @@ function level3() {
     name: '3. Get Some Air',
     concept: 'Hold GAS in the air to raise the nose, BRAKE to dip it.',
     targetTime: 38,
-    basePayout: 160,
+    basePayout: 200,
     recommended: 'pickup',
     friction: 0.85,
   });
@@ -535,7 +535,7 @@ function level4() {
     name: '4. Steep Country',
     concept: 'Steep slopes test your suspension — and mud saps your grip.',
     targetTime: 42,
-    basePayout: 190,
+    basePayout: 220,
     recommended: 'pickup',
     friction: 0.8,
   });
@@ -560,7 +560,7 @@ function level5() {
     name: '5. The Squeeze',
     concept: 'A narrow bridge with a low beam — precision beats speed.',
     targetTime: 40,
-    basePayout: 220,
+    basePayout: 240,
     recommended: 'pickup',
     friction: 0.85,
   });
@@ -581,7 +581,7 @@ function level6() {
     name: '6. Back It Up',
     concept: 'Stuck at the ramp? REVERSE to the back wall, then floor it.',
     targetTime: 45,
-    basePayout: 250,
+    basePayout: 260,
     recommended: 'pickup',
     friction: 0.9,
   });
@@ -609,7 +609,7 @@ function level7() {
     name: '7. Ups and Downs',
     concept: 'Hills, gaps and a seesaw — balance beats bravado.',
     targetTime: 46,
-    basePayout: 290,
+    basePayout: 280,
     recommended: 'pickup',
     friction: 0.85,
   });
@@ -627,7 +627,7 @@ function level8() {
     name: '8. Through the Wall',
     concept: 'Hit the ramp and sail THROUGH the opening in the wall.',
     targetTime: 44,
-    basePayout: 330,
+    basePayout: 300,
     recommended: 'pickup',
     friction: 0.85,
   });
@@ -658,7 +658,7 @@ function level9() {
     name: '9. The Long Haul',
     concept: 'Mud, rope bridges, walls — and the clock is ticking.',
     targetTime: 62,
-    basePayout: 380,
+    basePayout: 320,
     recommended: 'pickup',
     friction: 0.82,
   });
@@ -698,7 +698,7 @@ function level10() {
     name: '10. Graduation Day',
     concept: 'The full farm gauntlet. Pass this and World 2 awaits.',
     targetTime: 75,
-    basePayout: 500,
+    basePayout: 380,
     recommended: 'pickup',
     friction: 0.85,
   });
@@ -723,7 +723,7 @@ function town1() {
     name: '1. Suburban Cruise',
     concept: 'Speed bumps punish flat-out driving — ease off or get bounced.',
     targetTime: 40,
-    basePayout: 550,
+    basePayout: 340,
     recommended: 'pickup',
     friction: 1.0,
   });
@@ -751,7 +751,7 @@ function town2() {
     name: '2. Pothole Alley',
     concept: 'Potholes swallow slow wheels — carry speed to skip across.',
     targetTime: 42,
-    basePayout: 600,
+    basePayout: 360,
     recommended: 'pickup',
     friction: 1.0,
   });
@@ -778,7 +778,7 @@ function town3() {
     name: '3. Watch the Trees',
     concept: 'Leaves snag flying cars. Jump LOW under the canopies.',
     targetTime: 45,
-    basePayout: 650,
+    basePayout: 380,
     recommended: 'sports',
     friction: 1.0,
   });
@@ -806,7 +806,7 @@ function town4() {
     name: '4. Fence Hopper',
     concept: 'Pop off the crests to clear backyard fences.',
     targetTime: 48,
-    basePayout: 700,
+    basePayout: 400,
     recommended: 'sports',
     friction: 1.0,
   });
@@ -833,7 +833,7 @@ function town5() {
     name: '5. Rooftop Run',
     concept: 'Up the ramp and across the rooftops — don\'t look down.',
     targetTime: 50,
-    basePayout: 780,
+    basePayout: 420,
     recommended: 'sports',
     friction: 1.0,
   });
@@ -864,7 +864,7 @@ function town6() {
     name: '6. Rush Hour',
     concept: 'Bumps, holes and low branches — pick your speed wisely.',
     targetTime: 52,
-    basePayout: 850,
+    basePayout: 440,
     recommended: 'pickup',
     friction: 1.0,
   });
@@ -897,7 +897,7 @@ function town7() {
     name: '7. Alley Cat',
     concept: 'Tight clearances and traps — the motorbike shines here.',
     targetTime: 55,
-    basePayout: 920,
+    basePayout: 460,
     recommended: 'bike',
     friction: 1.0,
   });
@@ -925,7 +925,7 @@ function town8() {
     name: '8. Construction Zone',
     concept: 'Scaffolds, walls and wet concrete... okay, potholes.',
     targetTime: 58,
-    basePayout: 1000,
+    basePayout: 480,
     recommended: 'sports',
     friction: 1.0,
   });
@@ -963,7 +963,7 @@ function town9() {
     name: '9. Rooftop Marathon',
     concept: 'Roofs, rope bridges and one long way down.',
     targetTime: 70,
-    basePayout: 1100,
+    basePayout: 500,
     recommended: 'sports',
     friction: 1.0,
   });
@@ -1006,7 +1006,7 @@ function town10() {
     name: '10. Downtown Gauntlet',
     concept: 'Everything the town can throw at you. Good luck.',
     targetTime: 85,
-    basePayout: 1400,
+    basePayout: 560,
     recommended: 'sports',
     friction: 1.0,
   });
@@ -1038,7 +1038,7 @@ function city1() {
     name: '1. Slick Start',
     concept: 'Oil slicks: gold arrows boost you, red ones shove you back. Hit red fast.',
     targetTime: 45,
-    basePayout: 1500,
+    basePayout: 480,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1068,7 +1068,7 @@ function city2() {
     name: '2. Grease Trap',
     concept: 'Potholes bleed the speed you need to beat the red slicks.',
     targetTime: 48,
-    basePayout: 1600,
+    basePayout: 500,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1094,7 +1094,7 @@ function city3() {
     name: '3. Demolition Row',
     concept: 'Wrecking balls swing on a rhythm. Watch one full swing, then go.',
     targetTime: 52,
-    basePayout: 1750,
+    basePayout: 520,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1126,7 +1126,7 @@ function city4() {
     name: '4. Updraft Avenue',
     concept: 'Vent fans push you skyward — line up your jumps through the air columns.',
     targetTime: 55,
-    basePayout: 1900,
+    basePayout: 540,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1156,7 +1156,7 @@ function city5() {
     name: '5. Canal District',
     concept: 'Open water sinks you. Skim fast, jump hard, trust the fans.',
     targetTime: 56,
-    basePayout: 2050,
+    basePayout: 560,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1181,7 +1181,7 @@ function city6() {
     name: '6. The Stamping Line',
     concept: 'Heavy presses slam on a cycle. Wait for the rise — or floor it through.',
     targetTime: 58,
-    basePayout: 2200,
+    basePayout: 580,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1213,7 +1213,7 @@ function city7() {
     name: '7. Site Elevator',
     concept: 'Drive onto the crane platform and it hauls you up. Mind the edge.',
     targetTime: 60,
-    basePayout: 2350,
+    basePayout: 600,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1247,7 +1247,7 @@ function city8() {
     name: '8. Storm Drain',
     concept: 'Oil into water into swinging steel. Keep your rhythm.',
     targetTime: 62,
-    basePayout: 2500,
+    basePayout: 620,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1278,7 +1278,7 @@ function city9() {
     name: '9. High Steel',
     concept: 'Rooftops with wrecking balls and wind. Do not look down — there is water.',
     targetTime: 68,
-    basePayout: 2700,
+    basePayout: 640,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1318,7 +1318,7 @@ function city10() {
     name: '10. City Limits',
     concept: 'Everything the city has, back to back. Prove you belong downtown.',
     targetTime: 90,
-    basePayout: 3200,
+    basePayout: 700,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1348,7 +1348,7 @@ function mines1() {
     name: '1. Timber Line',
     concept: 'Old mine planks give way a moment after you touch them. Never stop on a bridge.',
     targetTime: 46,
-    basePayout: 3400,
+    basePayout: 560,
     recommended: 'sports',
     friction: 0.9,
   });
@@ -1374,7 +1374,7 @@ function mines2() {
     name: '2. Rockfall Alley',
     concept: 'Boulders drop from the ceiling chutes. Let one fall, then punch it across.',
     targetTime: 52,
-    basePayout: 3600,
+    basePayout: 580,
     recommended: 'sports',
     friction: 0.9,
   });
@@ -1401,7 +1401,7 @@ function mines3() {
     name: '3. Frozen Seam',
     concept: 'Frozen groundwater: no grip, no brakes, no gas. Pick your speed BEFORE the ice.',
     targetTime: 50,
-    basePayout: 3850,
+    basePayout: 600,
     recommended: 'sports',
     friction: 0.9,
   });
@@ -1428,7 +1428,7 @@ function mines4() {
     name: '4. Molten Vein',
     concept: 'Water forgives a skim — lava does not. Clear every pool clean.',
     targetTime: 52,
-    basePayout: 4100,
+    basePayout: 620,
     recommended: 'sports',
     friction: 0.9,
   });
@@ -1449,7 +1449,7 @@ function mines5() {
     name: '5. The Needle\'s Eye',
     concept: 'The tunnel pinches shut. Jump the slot flat and fast — no showboating.',
     targetTime: 54,
-    basePayout: 4400,
+    basePayout: 640,
     recommended: 'sports',
     friction: 0.9,
   });
@@ -1478,7 +1478,7 @@ function mines6() {
     name: '6. The Tire Yard',
     concept: 'Fall onto the tire stacks — each bounce throws you higher. Ride them up the ledges.',
     targetTime: 58,
-    basePayout: 4700,
+    basePayout: 660,
     recommended: 'pickup',
     friction: 0.9,
   });
@@ -1509,7 +1509,7 @@ function mines7() {
     name: '7. Cave-In',
     concept: 'Falling rock, breaking planks and black ice. The mine wants you buried.',
     targetTime: 62,
-    basePayout: 5000,
+    basePayout: 680,
     recommended: 'sports',
     friction: 0.9,
   });
@@ -1543,7 +1543,7 @@ function mines8() {
     name: '8. Acid Bath',
     concept: 'Tailing ponds went bad down here. Bounce high, jump tight, touch nothing green.',
     targetTime: 64,
-    basePayout: 5400,
+    basePayout: 700,
     recommended: 'pickup',
     friction: 0.9,
   });
@@ -1582,7 +1582,7 @@ function mines9() {
     name: '9. The Deep Seam',
     concept: 'The long way down: every hazard the mine has, one after another.',
     targetTime: 80,
-    basePayout: 5900,
+    basePayout: 720,
     recommended: 'sports',
     friction: 0.9,
   });
@@ -1627,7 +1627,7 @@ function mines10() {
     name: '10. The Motherlode',
     concept: 'Everything the mountain has left. Dig deep and drive out the other side.',
     targetTime: 95,
-    basePayout: 7500,
+    basePayout: 780,
     recommended: 'pickup',
     friction: 0.9,
   });
@@ -1661,7 +1661,7 @@ function castle1() {
     name: '1. The Drawbridge',
     concept: 'The old approach road: rotten planks and a ramp over the dry moat.',
     targetTime: 48,
-    basePayout: 8000,
+    basePayout: 640,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1685,7 +1685,7 @@ function castle2() {
     name: '2. The Fire Moat',
     concept: 'Fireballs leap from the molten moats on a rhythm. Cross while they dive.',
     targetTime: 56,
-    basePayout: 8600,
+    basePayout: 660,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1716,7 +1716,7 @@ function castle3() {
     name: '3. Spike Row',
     concept: 'Caltrop strips shred tires on touch. Pop off the crests and clear them.',
     targetTime: 52,
-    basePayout: 9200,
+    basePayout: 680,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1745,7 +1745,7 @@ function castle4() {
     name: '4. The Battering Run',
     concept: 'Ram the standing beams at full speed. A felled beam makes a fine bridge.',
     targetTime: 56,
-    basePayout: 9800,
+    basePayout: 700,
     recommended: 'pickup',
     friction: 0.95,
   });
@@ -1770,7 +1770,7 @@ function castle5() {
     name: '5. Archer Walls',
     concept: 'The murder-holes volley on a cycle. Wait out the rain, then run the gap.',
     targetTime: 58,
-    basePayout: 10500,
+    basePayout: 720,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1795,7 +1795,7 @@ function castle6() {
     name: '6. The Flail Yard',
     concept: 'Spiked flails on short chains swing FAST. Park close, watch one pass, go.',
     targetTime: 60,
-    basePayout: 11200,
+    basePayout: 740,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1822,7 +1822,7 @@ function castle7() {
     name: '7. The Outer Ward',
     concept: 'Spikes, rotten planks and stubborn timber. Keep your speed up.',
     targetTime: 64,
-    basePayout: 12000,
+    basePayout: 760,
     recommended: 'pickup',
     friction: 0.95,
   });
@@ -1852,7 +1852,7 @@ function castle8() {
     name: '8. Gauntlet of Fire',
     concept: 'Fire below, arrows above, spikes between. Timing is everything.',
     targetTime: 68,
-    basePayout: 13000,
+    basePayout: 780,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1886,7 +1886,7 @@ function castle9() {
     name: '9. The Inner Bailey',
     concept: 'Every defense the garrison has, wall after wall.',
     targetTime: 85,
-    basePayout: 14500,
+    basePayout: 800,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1924,7 +1924,7 @@ function castle10() {
     name: '10. The Throne Gauntlet',
     concept: 'The keep itself. Fire, steel and arrows between you and the crown.',
     targetTime: 100,
-    basePayout: 16500,
+    basePayout: 850,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1966,7 +1966,7 @@ function factory1() {
     name: '1. The Loading Dock',
     concept: 'Welcome to the Factory: conveyor belts, a compactor, and your first big jump.',
     targetTime: 78,
-    basePayout: 18000,
+    basePayout: 700,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -1997,7 +1997,7 @@ function factory2() {
     name: '2. Scrap Line',
     concept: 'Scrap metal rains from the chutes above. Watch a fall clear, then punch it across.',
     targetTime: 82,
-    basePayout: 19500,
+    basePayout: 720,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -2028,7 +2028,7 @@ function factory3() {
     name: '3. Acid Alley',
     concept: 'Acid pools eat anything that touches them. Ground springs give you extra hang time.',
     targetTime: 86,
-    basePayout: 21000,
+    basePayout: 740,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -2064,7 +2064,7 @@ function factory4() {
     name: '4. Pipe Works',
     concept: 'Big steel pipes carry the road underground. Launch out of one, land in the next.',
     targetTime: 84,
-    basePayout: 23000,
+    basePayout: 760,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -2092,7 +2092,7 @@ function factory5() {
     name: '5. The Sludge Pits',
     concept: 'Corrosive sludge pools in the dips. A fast splash survives — dawdling melts you.',
     targetTime: 88,
-    basePayout: 25000,
+    basePayout: 780,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -2121,7 +2121,7 @@ function factory6() {
     name: '6. Compactor Row',
     concept: 'Pneumatic compactors slam on a slow, heavy cycle. Wait for the rise, then floor it.',
     targetTime: 92,
-    basePayout: 27500,
+    basePayout: 800,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -2152,7 +2152,7 @@ function factory7() {
     name: '7. The Blade Line',
     concept: 'Rotor blades spin without pause. Park close, watch a full sweep, then thread it.',
     targetTime: 94,
-    basePayout: 30000,
+    basePayout: 820,
     recommended: 'sports',
     friction: 0.95,
   });
@@ -2184,7 +2184,7 @@ function factory8() {
     name: '8. Down the Shaft',
     concept: 'Two elevators drop you deep below the factory floor before a crane hauls you back up.',
     targetTime: 100,
-    basePayout: 33000,
+    basePayout: 840,
     deathY: GROUND_Y + 1300,
     recommended: 'sports',
     friction: 0.95,
@@ -2228,7 +2228,7 @@ function factory9() {
     name: '9. Assembly Gauntlet',
     concept: 'Every station on the line, back to back. Nothing here forgives hesitation.',
     targetTime: 118,
-    basePayout: 36500,
+    basePayout: 860,
     deathY: GROUND_Y + 800,
     recommended: 'sports',
     friction: 0.95,
@@ -2289,7 +2289,7 @@ function factory10() {
     name: '10. The Furnace Floor',
     concept: 'The heart of the plant. Presses, blades, acid, sludge and steel pipes — survive it all.',
     targetTime: 155,
-    basePayout: 42000,
+    basePayout: 900,
     deathY: GROUND_Y + 1500,
     recommended: 'sports',
     friction: 0.95,

@@ -27,6 +27,10 @@ function defaultSave() {
     bestTimes: {},      // { "worldId-levelIndex": seconds }
     lastLoginDay: null, // for daily bonus
     upgradeHintShown: false, // one-time "upgrade your car" prompt
+    infinite: {
+      unlocked: {},     // { themeId: true } — Farm (1) is always unlocked
+      best: {},         // { themeId: best distance in meters }
+    },
   };
 }
 
@@ -48,6 +52,8 @@ class SaveData {
             this.data.vehicles[id] = defaultVehicleState(VEHICLES[id].price === 0);
           }
         }
+        // Nested objects merge wholesale — backfill sub-keys for older saves.
+        this.data.infinite = { unlocked: {}, best: {}, ...(this.data.infinite || {}) };
       }
     } catch (e) {
       console.warn('Save load failed, starting fresh:', e);
@@ -115,6 +121,29 @@ class SaveData {
     const prev = getWorld(worldId - 1);
     if (!prev || !prev.playable || prev.levels.length === 0) return false;
     return this.getLevelStars(`${prev.id}-${prev.levels.length - 1}`) >= 1;
+  }
+
+  // --- Infinite mode: coin-gated theme unlocks + best distance per theme ---
+  isInfiniteUnlocked(themeId) {
+    return themeId === 1 || !!this.data.infinite.unlocked[themeId];
+  }
+
+  unlockInfinite(themeId, cost) {
+    if (!this.spendCoins(cost)) return false;
+    this.data.infinite.unlocked[themeId] = true;
+    this.save();
+    return true;
+  }
+
+  getInfiniteBest(themeId) {
+    return this.data.infinite.best[themeId] || 0;
+  }
+
+  recordInfiniteBest(themeId, meters) {
+    if (meters > this.getInfiniteBest(themeId)) {
+      this.data.infinite.best[themeId] = Math.round(meters);
+      this.save();
+    }
   }
 
   // --- One-time upgrade hint (shown when coins first cover an engine upgrade) ---

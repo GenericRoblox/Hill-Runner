@@ -15,6 +15,8 @@ import { UpgradeScreen } from './screens/UpgradeScreen.js';
 import { GameScreen } from './screens/GameScreen.js';
 import { EditorScreen } from './screens/EditorScreen.js';
 import { CustomLevelsScreen } from './screens/CustomLevelsScreen.js';
+import { InfiniteSelectScreen } from './screens/InfiniteSelectScreen.js';
+import { InfiniteGameScreen } from './screens/InfiniteGameScreen.js';
 
 const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
@@ -41,13 +43,21 @@ screens.register('upgrade', new UpgradeScreen(menuRoot));
 screens.register('game', new GameScreen(canvas));
 screens.register('editor', new EditorScreen(canvas));
 screens.register('customlevels', new CustomLevelsScreen(menuRoot));
+screens.register('infinite', new InfiniteSelectScreen(menuRoot));
+screens.register('infinitegame', new InfiniteGameScreen(canvas));
 
 // Dev deep-link: ?screen=<name> or ?world=4&level=2 jumps straight there;
 // add &bot=1 to hold the gas down (for screenshotting mid-level).
 const q = new URLSearchParams(location.search);
 // &coins=N force-sets the wallet (dev testing: economy/upgrade-hint flows).
 if (q.has('coins')) { saveData.data.coins = +q.get('coins'); saveData.save(); }
-if (q.has('world')) {
+if (q.has('inf')) {
+  // Dev deep-link into an infinite run: ?inf=<themeId>&bot=1&warp=N.
+  screens.show('infinitegame', { themeId: +q.get('inf'), vehId: q.get('veh') || undefined });
+  if (q.has('bot')) input.getState = () => ({ gas: true, brake: false });
+  const warp = +(q.get('warp') || 0);
+  for (let i = 0; i < warp * 12; i++) screens.update(100);
+} else if (q.has('world')) {
   // &veh=sports overrides the active vehicle (dev sprite/tuning preview).
   screens.show('game', {
     worldId: +q.get('world'),

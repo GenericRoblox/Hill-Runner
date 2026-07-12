@@ -47,9 +47,16 @@
       ed._setMode('obstacle');
       const q = new URLSearchParams(location.search);
       if (q.get('cat')) ed._catalogModal();
-      else {
+      else if (q.get('thover') != null) {
+        // Terrain-mode hover preview for tool index &thover at cell 25.
+        ed._setMode('terrain');
+        ed.toolIndex = +q.get('thover');
+        ed.mouse = { x: 1530, y: 590, cell: 25, row: 0, inWorld: true };
+      } else {
         ed._openParams(ed.lvl.obstacles[1]);
-        ed.mouse = { x: 2000, y: 500, cell: 33, inWorld: true };
+        // Hover an empty spot 3 rows above the ground: the translucent
+        // placement ghost (slot 0 = ramp) should appear there.
+        ed.mouse = { x: 1530, y: 525, cell: 25, row: 3, inWorld: true };
       }
     }
   </script>

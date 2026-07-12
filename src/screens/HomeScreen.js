@@ -21,6 +21,10 @@ export class HomeScreen {
       onclick: () => screens.show('worldselect'),
     }));
     col.appendChild(el('button', {
+      class: 'btn', text: '∞ Infinite',
+      onclick: () => screens.show('infinite'),
+    }));
+    col.appendChild(el('button', {
       class: 'btn', text: '🔧 Garage',
       onclick: () => screens.show('garage'),
     }));
