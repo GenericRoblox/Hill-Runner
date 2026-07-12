@@ -243,6 +243,11 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
 }
 .card .price { color: var(--go-deep); font-weight: 700; margin-top: 6px; }
 .card .icon { font-size: 2.2rem; margin-bottom: 8px; filter: drop-shadow(0 3px 0 rgba(30, 18, 4, 0.25)); }
+.card .veh-img {
+  display: block; width: 100%; max-width: 180px; height: 72px;
+  margin: 0 auto 8px; object-fit: contain;
+  filter: drop-shadow(0 4px 0 rgba(30, 18, 4, 0.22));
+}
 
 /* ---------- Upgrade rows ---------- */
 .upg-row {
@@ -256,18 +261,51 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
   gap: 12px; flex-wrap: wrap;
   box-shadow: 0 5px 0 var(--board-edge);
 }
-.upg-row .info { flex: 1; min-width: 180px; }
+.upg-row .info { display: flex; align-items: baseline; gap: 10px; width: 100%; }
 .upg-row strong { font-family: var(--display); font-weight: 400; font-size: 1.2rem; letter-spacing: 1px; }
 .upg-row .tier-name { color: var(--ink-soft); font-size: 0.88rem; font-weight: 600; }
-.upg-row .pips { margin-top: 6px; }
-.upg-row .pip {
-  display: inline-block; width: 24px; height: 10px;
-  border-radius: 5px; margin-right: 5px;
-  background: rgba(67, 41, 15, 0.18);
-  border: 2px solid var(--ink);
+/* Tier grid: all four part tiers of a stat, side by side */
+.tier-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(90px, 1fr));
+  gap: 10px; width: 100%; margin-top: 10px;
 }
-.upg-row .pip.on { background: var(--go); }
-.upg-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+@media (max-width: 560px) {
+  .tier-grid { grid-template-columns: repeat(2, 1fr); }
+}
+.tier-cell {
+  background: rgba(255, 247, 228, 0.92);
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  padding: 8px 6px 7px;
+  text-align: center;
+  cursor: pointer;
+  box-shadow: 0 4px 0 var(--board-edge);
+  transition: transform 0.08s, box-shadow 0.08s, filter 0.2s;
+}
+.tier-cell:hover { transform: translateY(-2px); }
+.tier-cell:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--board-edge); }
+.tier-cell.equipped {
+  border-color: var(--go-deep);
+  box-shadow: 0 0 0 3px var(--go), 0 4px 0 var(--board-edge);
+}
+/* Not bought yet: part art grays out; the next tier keeps its price bold */
+.tier-cell.buyable .tier-icon, .tier-cell.locked .tier-icon {
+  filter: grayscale(1) opacity(0.45);
+}
+.tier-cell.locked { filter: saturate(0.6); }
+.tier-icon {
+  width: 60px; height: 60px; object-fit: contain;
+  display: block; margin: 0 auto;
+}
+.tier-icon.emoji { font-size: 2.3rem; line-height: 60px; }
+.tier-cell-name {
+  font-size: 0.72rem; font-weight: 700; color: var(--ink-soft);
+  margin-top: 3px; line-height: 1.15; min-height: 1.8em;
+}
+.tier-tag { font-size: 0.78rem; font-weight: 800; color: var(--ink-soft); margin-top: 2px; }
+.tier-tag.on { color: var(--go-deep); }
+.tier-tag.price { color: var(--go-deep); }
 
 /* ---------- Overlays ---------- */
 .overlay {

@@ -10,7 +10,11 @@ const KEY = 'hillrunner_save_v1';
 function defaultVehicleState(owned) {
   return {
     owned,
+    // `upgrades` is the EQUIPPED tier per stat (what physics runs with);
+    // `ownedUpgrades` is the highest tier bought. Buying is sequential, but
+    // any bought tier can be re-equipped from the upgrade screen.
     upgrades: { engine: 0, suspension: 0, tires: 0, brakes: 0 },
+    ownedUpgrades: { engine: 0, suspension: 0, tires: 0, brakes: 0 },
   };
 }
 
@@ -54,6 +58,10 @@ class SaveData {
         }
         // Nested objects merge wholesale — backfill sub-keys for older saves.
         this.data.infinite = { unlocked: {}, best: {}, ...(this.data.infinite || {}) };
+        // Older saves had no owned/equipped split: everything bought was equipped.
+        for (const vs of Object.values(this.data.vehicles)) {
+          if (!vs.ownedUpgrades) vs.ownedUpgrades = { ...vs.upgrades };
+        }
       }
     } catch (e) {
       console.warn('Save load failed, starting fresh:', e);
@@ -92,9 +100,20 @@ class SaveData {
     this.data.vehicles[id].owned = true;
     this.save();
   }
+  // Equip a tier the player already owns.
   setUpgradeTier(id, stat, tier) {
     if (!UPGRADE_STATS.includes(stat)) return;
-    this.data.vehicles[id].upgrades[stat] = tier;
+    const vs = this.data.vehicles[id];
+    if (tier > vs.ownedUpgrades[stat]) return;
+    vs.upgrades[stat] = tier;
+    this.save();
+  }
+  // Record a purchase (caller pays) and equip the new tier.
+  ownUpgradeTier(id, stat, tier) {
+    if (!UPGRADE_STATS.includes(stat)) return;
+    const vs = this.data.vehicles[id];
+    vs.ownedUpgrades[stat] = Math.max(vs.ownedUpgrades[stat], tier);
+    vs.upgrades[stat] = tier;
     this.save();
   }
 

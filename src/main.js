@@ -30,7 +30,10 @@ window.addEventListener('resize', resize);
 resize();
 
 loadTextures();
-for (const v of Object.values(VEHICLES)) loadSprite(v.body.sprite);
+for (const v of Object.values(VEHICLES)) {
+  loadSprite(v.body.sprite);
+  loadSprite(v.body.wheelSprite);
+}
 document.fonts?.load('20px Beachday'); // warm up the display face for canvas HUD text
 
 input.init(canvas);
@@ -51,6 +54,17 @@ screens.register('infinitegame', new InfiniteGameScreen(canvas));
 const q = new URLSearchParams(location.search);
 // &coins=N force-sets the wallet (dev testing: economy/upgrade-hint flows).
 if (q.has('coins')) { saveData.data.coins = +q.get('coins'); saveData.save(); }
+// &tiers=e,s,t,b force-sets the (&veh-overridable) vehicle's upgrade tiers
+// (dev testing: per-tier visuals like tire looks, tuning previews).
+if (q.has('tiers')) {
+  const [e, s, t, b] = q.get('tiers').split(',').map(n => +n || 0);
+  const vs = saveData.getVehicleState(q.get('veh') || saveData.getActiveVehicle());
+  if (vs) {
+    vs.upgrades = { engine: e, suspension: s, tires: t, brakes: b };
+    vs.ownedUpgrades = { engine: e, suspension: s, tires: t, brakes: b };
+    saveData.save();
+  }
+}
 if (q.has('inf')) {
   // Dev deep-link into an infinite run: ?inf=<themeId>&bot=1&warp=N.
   screens.show('infinitegame', { themeId: +q.get('inf'), vehId: q.get('veh') || undefined });

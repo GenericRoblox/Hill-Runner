@@ -22,7 +22,7 @@ python -m http.server 8000        # then open http://localhost:8000
   --virtual-time-budget=150000 --dump-dom "http://localhost:8000/test-sim.html"
 ```
 
-Debug helpers: `/debug-sim.html?world=4&level=9&tier=t3&from=6` traces one bot run (x/y/vx/vy/grounded per 0.1 s — the fastest way to diagnose a failing level). The game itself takes dev deep-links: `index.html?screen=garage`, or `?world=4&level=2&bot=1&warp=7` (bot holds gas, warp fast-forwards ~7 s — good for `--screenshot` visual checks).
+Debug helpers: `/debug-sim.html?world=4&level=9&tier=t3&from=6` traces one bot run (x/y/vx/vy/grounded per 0.1 s — the fastest way to diagnose a failing level). The game itself takes dev deep-links: `index.html?screen=garage`, or `?world=4&level=2&bot=1&warp=7` (bot holds gas, warp fast-forwards ~7 s — good for `--screenshot` visual checks); add `&veh=sports` to override the vehicle and `&tiers=e,s,t,b` to force its upgrade tiers (e.g. tire-look visuals).
 
 There is no Node.js on this machine — verify JS through the browser (headless Edge as above). No linter or unit-test framework; `test-sim.html` is the test suite.
 
@@ -47,7 +47,7 @@ Editor test pages (run like test-sim, need the local server): `test-editor-smoke
 
 **Game loop** — single rAF in `src/main.js`; `GameScreen.update` runs a fixed-step accumulator at 60 Hz calling `car.update()` (input + fail checks) before each `physics.step()`. Win = chassis past `level.finishX`; fail = below `level.deathY` or `Car.update` returns `'stuck'` (inverted + slow for a 1.5 s grace window).
 
-**Save data** — one JSON object in localStorage (`hillrunner_save_v1`) behind the `saveData` singleton: coins, per-vehicle upgrades, stars, best times. Level N unlocks when level N−1 has ≥1 star. New fields must merge over defaults in `load()` so old saves survive.
+**Save data** — one JSON object in localStorage (`hillrunner_save_v1`) behind the `saveData` singleton: coins, per-vehicle upgrades, stars, best times. Per-vehicle `upgrades` is the EQUIPPED tier per stat (what physics runs with); `ownedUpgrades` is the highest tier bought — buying is sequential, but any owned tier can be re-equipped from the upgrade screen (no sell-back). Level N unlocks when level N−1 has ≥1 star. New fields must merge over defaults in `load()` so old saves survive.
 
 ## Physics conventions (the part that will bite you)
 

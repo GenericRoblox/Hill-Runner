@@ -4,6 +4,7 @@ import { PhysicsWorld } from '../physics/PhysicsWorld.js';
 import { texPattern } from '../ui/Textures.js';
 import { ParticleSystem, buildTireProfiles } from '../ui/Particles.js';
 import { getSprite } from '../ui/Sprites.js';
+import { drawWheel } from '../ui/WheelArt.js';
 import { Terrain } from '../physics/Terrain.js';
 import { Obstacles } from '../physics/Obstacles.js';
 import { Car } from '../physics/Car.js';
@@ -718,27 +719,14 @@ export class GameScreen {
     const colors = { pickup: '#d9772f', sports: '#d33c3c', bike: '#3a67c9' };
     const color = colors[this.vehicleDef.id] || '#888';
 
-    // Wheels
+    // Wheels: tire rubber + rim sprite, sized/treaded by the equipped tire
+    // tier's `look` (see ui/WheelArt.js — shared with the upgrade-menu icons).
+    const rimSprite = getSprite(this.stats.body.wheelSprite);
+    const look = this.stats.tireLook || { thick: 0.3, tread: 'street' };
     for (const wheel of wheels) {
-      const r = wheel.circleRadius;
       ctx.save();
       ctx.translate(wheel.position.x, wheel.position.y);
-      ctx.rotate(wheel.angle);
-      ctx.beginPath();
-      ctx.arc(0, 0, r, 0, Math.PI * 2);
-      ctx.fillStyle = '#222';
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(0, 0, r * 0.45, 0, Math.PI * 2);
-      ctx.fillStyle = '#999';
-      ctx.fill();
-      // Spokes make wheel spin readable (spec §8 readability).
-      ctx.beginPath();
-      ctx.moveTo(-r * 0.9, 0); ctx.lineTo(r * 0.9, 0);
-      ctx.moveTo(0, -r * 0.9); ctx.lineTo(0, r * 0.9);
-      ctx.strokeStyle = '#bbb';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
+      drawWheel(ctx, wheel.circleRadius, wheel.angle, look, rimSprite);
       ctx.restore();
     }
 

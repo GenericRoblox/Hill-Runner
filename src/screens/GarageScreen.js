@@ -23,12 +23,12 @@ export class GarageScreen {
       const isActive = saveData.getActiveVehicle() === v.id;
 
       const card = el('div', { class: `card${isActive ? ' selected' : ''}${state.owned ? '' : ' locked'}` });
-      card.appendChild(el('div', { class: 'icon', text: v.icon }));
+      card.appendChild(el('img', { class: 'veh-img', src: v.body.sprite, alt: v.name }));
       card.appendChild(el('h3', { text: v.name + (isActive ? '  ✓ active' : '') }));
       card.appendChild(el('div', { class: 'sub', text: v.desc }));
 
       if (state.owned) {
-        const tiers = Object.values(state.upgrades).reduce((a, b) => a + b, 0);
+        const tiers = Object.values(state.ownedUpgrades).reduce((a, b) => a + b, 0);
         card.appendChild(el('div', { class: 'sub', text: `Upgrades: ${tiers}/12 tiers` }));
         if (!isActive) {
           card.appendChild(el('button', {

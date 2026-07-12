@@ -19,6 +19,13 @@
 // body.comY drops the centre of mass below the sprite's centre (px, y-down).
 // Tall sprite colliders put the geometric centre high, which makes the car
 // wheelie under throttle and flip on landings; raise comY to plant it.
+//
+// body.wheelSprite is rim-only art (sprites/wheel-sprites/, cropped tight to
+// the rim) — GameScreen draws the rubber itself around it, sized off the
+// physics wheel radius. Each tire tier's `look` drives that rubber:
+//   thick – tire wall thickness as a fraction of wheelRadius (rim shrinks to fit)
+//   tread – 'slick' (smooth + sheen) | 'street' (shallow sipes) | 'blocks' (knobby lugs)
+// Purely visual; grip is the only stat physics reads.
 
 export const VEHICLES = {
   pickup: {
@@ -31,6 +38,7 @@ export const VEHICLES = {
     body: {
       width: 145, height: 60, wheelRadius: 18, wheelBase: 78, density: 0.0064,
       sprite: 'sprites/truck-sprite.png', wheelY: 26, comY: 22,
+      wheelSprite: 'sprites/wheel-sprites/truck-wheel.png',
     },
     airControl: 1.2,
     tiers: {
@@ -47,10 +55,10 @@ export const VEHICLES = {
         { name: 'Pro Long-Travel',stiffness: 0.100, damping: 0.16, travel: 1.15, cost: 5500 },
       ],
       tires: [
-        { name: 'Street',          grip: 0.85, cost: 0 },
-        { name: 'All-Terrain',     grip: 1.00, cost: 700 },
-        { name: 'Off-Road Knobby', grip: 1.15, cost: 2000 },
-        { name: 'Racing Slick',    grip: 1.30, cost: 4800 },
+        { name: 'Street',          grip: 0.85, cost: 0,    look: { thick: 0.26, tread: 'street' } },
+        { name: 'All-Terrain',     grip: 1.00, cost: 700,  look: { thick: 0.33, tread: 'street' } },
+        { name: 'Off-Road Knobby', grip: 1.15, cost: 2000, look: { thick: 0.40, tread: 'blocks' } },
+        { name: 'Racing Slick',    grip: 1.30, cost: 4800, look: { thick: 0.31, tread: 'slick' } },
       ],
       brakes: [
         { name: 'Stock Drums',    power: 1.0, cost: 0 },
@@ -71,6 +79,7 @@ export const VEHICLES = {
     body: {
       width: 135, height: 50, wheelRadius: 15, wheelBase: 75, density: 0.0032,
       sprite: 'sprites/sports_car-sprite.png', wheelY: 10, comY: 15,
+      wheelSprite: 'sprites/wheel-sprites/sports_car-wheel.png',
     },
     airControl: 0.6,
     tiers: {
@@ -87,10 +96,10 @@ export const VEHICLES = {
         { name: 'Track Package',  stiffness: 0.120, damping: 0.17, travel: 0.96, cost: 6000 },
       ],
       tires: [
-        { name: 'Street',       grip: 0.90, cost: 0 },
-        { name: 'Sport',        grip: 1.05, cost: 800 },
-        { name: 'Semi-Slick',   grip: 1.20, cost: 2200 },
-        { name: 'Racing Slick', grip: 1.38, cost: 5200 },
+        { name: 'Street',       grip: 0.90, cost: 0,    look: { thick: 0.22, tread: 'street' } },
+        { name: 'Sport',        grip: 1.05, cost: 800,  look: { thick: 0.25, tread: 'street' } },
+        { name: 'Semi-Slick',   grip: 1.20, cost: 2200, look: { thick: 0.27, tread: 'street' } },
+        { name: 'Racing Slick', grip: 1.38, cost: 5200, look: { thick: 0.30, tread: 'slick' } },
       ],
       brakes: [
         { name: 'Stock Discs',   power: 1.1, cost: 0 },
@@ -111,6 +120,7 @@ export const VEHICLES = {
     body: {
       width: 72, height: 32, wheelRadius: 13, wheelBase: 52, density: 0.0020,
       sprite: 'sprites/motorcycle-sprite.png', wheelY: 15, comY: 4,
+      wheelSprite: 'sprites/wheel-sprites/motorcycle-wheel.png',
     },
     airControl: 3.6,
     tiers: {
@@ -127,10 +137,10 @@ export const VEHICLES = {
         { name: 'Factory MX',     stiffness: 0.070, damping: 0.16, travel: 1.00, cost: 5200 },
       ],
       tires: [
-        { name: 'Street',     grip: 0.85, cost: 0 },
-        { name: 'Dual-Sport', grip: 1.00, cost: 650 },
-        { name: 'Knobby',     grip: 1.15, cost: 1900 },
-        { name: 'Race Compound', grip: 1.32, cost: 4600 },
+        { name: 'Street',     grip: 0.85, cost: 0,    look: { thick: 0.28, tread: 'street' } },
+        { name: 'Dual-Sport', grip: 1.00, cost: 650,  look: { thick: 0.35, tread: 'street' } },
+        { name: 'Knobby',     grip: 1.15, cost: 1900, look: { thick: 0.42, tread: 'blocks' } },
+        { name: 'Race Compound', grip: 1.32, cost: 4600, look: { thick: 0.33, tread: 'slick' } },
       ],
       brakes: [
         { name: 'Stock',        power: 1.0, cost: 0 },
@@ -162,12 +172,6 @@ export function getUpgradeCost(id, stat, currentTier) {
   return tiers[currentTier + 1].cost;
 }
 
-// Sell-back value of the CURRENT tier (50% refund, spec §6.2), or null at tier 0.
-export function getSellBackValue(id, stat, currentTier) {
-  if (currentTier <= 0) return null;
-  return Math.floor(VEHICLES[id].tiers[stat][currentTier].cost * 0.5);
-}
-
 // Resolved stat block for a vehicle at the given upgrade tiers.
 export function getStatsAtTiers(id, upgrades) {
   const v = VEHICLES[id];
@@ -183,6 +187,7 @@ export function getStatsAtTiers(id, upgrades) {
     damping: susp.damping,
     travel: susp.travel,
     grip: tires.grip,
+    tireLook: tires.look,
     brakePower: brakes.power,
     // Brakes also sharpen air control (spec §6.2 item 5).
     airControl: v.airControl * (1 + 0.08 * upgrades.brakes),
