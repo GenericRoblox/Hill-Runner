@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>editor UI test</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+  <div id="menu-root"></div>
+  <div id="pause-overlay" class="overlay hidden">
+    <div class="panel">
+      <h2>Paused</h2>
+      <button id="btn-resume" class="btn primary">Resume</button>
+      <button id="btn-restart" class="btn">Restart</button>
+      <button id="btn-quit" class="btn">Quit to Level Select</button>
+    </div>
+  </div>
+  <div id="result-overlay" class="overlay hidden"><div class="panel" id="result-panel"></div></div>
+  <div id="toast" class="hidden"></div>
+  <pre id="testlog" style="position:fixed; z-index:99; left:0; top:0; background:#fff; font-size:10px; max-width:40%;"></pre>
+
+  <script>
+    // Seed a level before main.js boots (the page URL carries ?screen=editor&id=uitest).
+    // Real created levels (if any) are stashed under a backup key first — this
+    // page overwrites the store, and a player might open it by accident.
+    const existing = localStorage.getItem('hillrunner_custom_v1');
+    if (existing && !localStorage.getItem('hillrunner_custom_v1_backup')) {
+      localStorage.setItem('hillrunner_custom_v1_backup', existing);
+    }
+    localStorage.setItem('hillrunner_custom_v1', JSON.stringify([{
+      id: 'uitest', name: 'UI Test', theme: 1, length: 60, targetTime: 60,
+      cells: Array.from({ length: 60 }, () => ({ h: 0 })),
+      obstacles: [],
+    }]));
+    if (!location.search) location.replace(location.pathname + '?screen=editor&id=uitest');
+  </script>
+  <script src="lib/matter.min.js"></script>
+  <script type="module" src="src/main.js"></script>
+  <script type="module">
+    const logEl = document.getElementById('testlog');
+    const log = (s) => { logEl.textContent += s + '\n'; };
+    // Timer-based (not rAF): headless --dump-dom advances virtual time for
+    // timers but never fires rAF, which only runs under --screenshot.
+    const frames = (n) => new Promise((res) => setTimeout(res, n * 25));
+    const canvas = document.getElementById('game-canvas');
+    const mouse = (type, x, y, button = 0, target = canvas) =>
+      target.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, button, bubbles: true }));
+
+    try {
+      await frames(5);
+      const { screens } = await import('./src/core/ScreenManager.js');
+      const ed = screens.screens.editor;
+      log('screen: ' + screens.currentName + (screens.currentName === 'editor' ? ' OK' : ' FAIL'));
+      log('level id: ' + ed.lvl.id + (ed.lvl.id === 'uitest' ? ' OK' : ' FAIL'));
+      log('ui: ' + (document.getElementById('editor-ui') ? 'OK' : 'FAIL'));
+      log('hotbar slots: ' + ed.ui.querySelectorAll('.ed-slot').length);
+
+      // World x=600..900 maps to screen (wx - camX) * zoom.
+      const sx = (wx) => (wx - ed.camX) * ed.zoom;
+      const sy = (wy) => (wy - ed.camY) * ed.zoom;
+
+      // 1. Paint a slope with tool 3 (Slope Up) across cells 10-14
+      ed.toolIndex = 2;
+      mouse('mousedown', sx(10 * 60 + 30), sy(600));
+      mouse('mousemove', sx(14 * 60 + 30), sy(600), 0, window);
+      mouse('mouseup', sx(14 * 60 + 30), sy(600), 0, window);
+      await frames(3);
+      const h14 = ed.lvl.cells[14].h;
+      log('slope paint: h[14]=' + h14 + (h14 === 4 ? ' OK' : ' FAIL'));
+
+      // 2. Right-drag delete cells 20-22 -> gap
+      mouse('mousedown', sx(20 * 60 + 30), sy(600), 2);
+      mouse('mousemove', sx(22 * 60 + 30), sy(600), 2, window);
+      mouse('mouseup', sx(22 * 60 + 30), sy(600), 2, window);
+      await frames(3);
+      log('gap delete: h[21]=' + ed.lvl.cells[21].h + (ed.lvl.cells[21].h === null ? ' OK' : ' FAIL'));
+
+      // 3. Liquid paint (water = index 9)
+      ed.toolIndex = 9;
+      mouse('mousedown', sx(30 * 60 + 30), sy(600));
+      mouse('mousemove', sx(32 * 60 + 30), sy(600), 0, window);
+      mouse('mouseup', sx(32 * 60 + 30), sy(600), 0, window);
+      await frames(3);
+      log('water paint: ' + ed.lvl.cells[31].liquid + (ed.lvl.cells[31].liquid === 'water' ? ' OK' : ' FAIL'));
+
+      // 4. Obstacle mode: place a ramp (slot 0) at cell ~40
+      ed._setMode('obstacle');
+      ed.slot = 0;
+      await frames(2);
+      mouse('mousemove', sx(40 * 60), sy(560), 0, window);
+      mouse('mousedown', sx(40 * 60), sy(560));
+      mouse('mouseup', sx(40 * 60), sy(560), 0, window);
+      await frames(3);
+      log('place: ' + ed.lvl.obstacles.length + (ed.lvl.obstacles.length === 1 ? ' OK' : ' FAIL')
+        + ' type=' + (ed.lvl.obstacles[0] || {}).type);
+
+      // 5. Click the placed obstacle -> params panel opens
+      mouse('mousemove', sx(40 * 60), sy(560), 0, window);
+      mouse('mousedown', sx(40 * 60), sy(560));
+      mouse('mouseup', sx(40 * 60), sy(560), 0, window);
+      await frames(2);
+      const panelOpen = !ed.paramsEl.classList.contains('hidden');
+      log('params panel: ' + (panelOpen ? 'OK' : 'FAIL'));
+      const slider = ed.paramsEl.querySelector('input[type=range]');
+      if (slider) {
+        slider.value = slider.max;
+        slider.dispatchEvent(new Event('input'));
+        await frames(2);
+        log('param edit: w=' + ed.lvl.obstacles[0].params.w + (ed.lvl.obstacles[0].params.w === 320 ? ' OK' : ' FAIL'));
+      }
+
+      // 6. Right-click deletes the obstacle
+      ed._closeParams();
+      mouse('mousemove', sx(40 * 60), sy(560), 2, window);
+      mouse('mousedown', sx(40 * 60), sy(560), 2);
+      mouse('mouseup', sx(40 * 60), sy(560), 2, window);
+      await frames(2);
+      log('rmb delete: ' + ed.lvl.obstacles.length + (ed.lvl.obstacles.length === 0 ? ' OK' : ' FAIL'));
+
+      // 7. Test-play round trip
+      ed._test();
+      await frames(10);
+      log('test play: ' + screens.currentName + (screens.currentName === 'game' ? ' OK' : ' FAIL'));
+      screens.screens.game.quit();
+      await frames(5);
+      log('quit back: ' + screens.currentName + ' id=' + screens.screens.editor.lvl.id
+        + (screens.currentName === 'editor' && screens.screens.editor.lvl.id === 'uitest' ? ' OK' : ' FAIL'));
+
+      // 8. Terrain edits survived the round trip (autosave + reload)?
+      const ed2 = screens.screens.editor;
+      log('persist: h[14]=' + ed2.lvl.cells[14].h + ' liquid[31]=' + ed2.lvl.cells[31].liquid
+        + (ed2.lvl.cells[14].h === 4 && ed2.lvl.cells[31].liquid === 'water' ? ' OK' : ' FAIL'));
+
+      // 9. Exit to the Created Levels tab
+      screens.screens.editor._exitToList();
+      await frames(3);
+      const cardCount = document.querySelectorAll('#menu-root .card').length;
+      log('exit: ' + screens.currentName + ' cards=' + cardCount
+        + (screens.currentName === 'customlevels' && cardCount === 1 ? ' OK' : ' FAIL'));
+
+      log(logEl.textContent.includes('FAIL') ? 'UI TEST: FAILURES ABOVE' : 'UI TEST: ALL PASS');
+    } catch (e) {
+      log('EXCEPTION: ' + e.message + '\n' + e.stack);
+    }
+  </script>
+</body>
+</html>

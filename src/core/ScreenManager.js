@@ -24,10 +24,11 @@ class ScreenManager {
     this.current = this.screens[name];
     this.currentName = name;
 
-    const isGame = name === 'game';
-    this.canvas.classList.toggle('active', isGame);
-    this.menuRoot.classList.toggle('hidden', isGame);
-    if (!isGame) this.menuRoot.scrollTop = 0;
+    // Canvas screens (game, editor) declare usesCanvas; everything else is DOM.
+    const usesCanvas = !!this.current.usesCanvas;
+    this.canvas.classList.toggle('active', usesCanvas);
+    this.menuRoot.classList.toggle('hidden', usesCanvas);
+    if (!usesCanvas) this.menuRoot.scrollTop = 0;
 
     this.current.enter(params);
   }

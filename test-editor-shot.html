@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>editor visual check</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+  <div id="menu-root"></div>
+  <div id="pause-overlay" class="overlay hidden">
+    <div class="panel">
+      <button id="btn-resume" class="btn primary">Resume</button>
+      <button id="btn-restart" class="btn">Restart</button>
+      <button id="btn-quit" class="btn">Quit</button>
+    </div>
+  </div>
+  <div id="result-overlay" class="overlay hidden"><div class="panel" id="result-panel"></div></div>
+  <div id="toast" class="hidden"></div>
+  <script>
+    const existing = localStorage.getItem('hillrunner_custom_v1');
+    if (existing && !localStorage.getItem('hillrunner_custom_v1_backup')) {
+      localStorage.setItem('hillrunner_custom_v1_backup', existing);
+    }
+    const cells = [];
+    for (let i = 0; i < 80; i++) cells.push({ h: 0 });
+    localStorage.setItem('hillrunner_custom_v1', JSON.stringify([{
+      id: 'shot', name: 'Visual Check', theme: 3, length: 80, targetTime: 60,
+      cells,
+      obstacles: [
+        { type: 'ramp', cell: 10, params: { w: 170, h: 80 } },
+        { type: 'press', cell: 16, params: { w: 100, clearance: 175, period: 3.4, phase: 0 } },
+        { type: 'bouncer', cell: 21, params: { w: 140 } },
+      ],
+    }]));
+    if (!location.search) location.replace(location.pathname + '?screen=editor&id=shot&cam=200');
+  </script>
+  <script src="lib/matter.min.js"></script>
+  <script type="module" src="src/main.js"></script>
+  <script type="module">
+    // Flip to obstacle mode and select a placed press so the hotbar, ghost
+    // and parameter panel are all visible in one screenshot.
+    await new Promise(r => setTimeout(r, 500));
+    const { screens } = await import('./src/core/ScreenManager.js');
+    const ed = screens.screens.editor;
+    if (screens.currentName === 'editor') {
+      ed._setMode('obstacle');
+      const q = new URLSearchParams(location.search);
+      if (q.get('cat')) ed._catalogModal();
+      else {
+        ed._openParams(ed.lvl.obstacles[1]);
+        ed.mouse = { x: 2000, y: 500, cell: 33, inWorld: true };
+      }
+    }
+  </script>
+</body>
+</html>

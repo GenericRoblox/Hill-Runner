@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>custom level drive test</title></head>
+<body>
+<pre id="out"></pre>
+<script src="lib/matter.min.js"></script>
+<script type="module">
+const out = document.getElementById('out');
+const log = (s) => { out.textContent += s + '\n'; };
+window.addEventListener('error', (e) => log('WINDOW ERROR: ' + e.message));
+
+try {
+  const cl = await import('./src/data/customLevels.js');
+  const { PhysicsWorld } = await import('./src/physics/PhysicsWorld.js');
+  const { Obstacles } = await import('./src/physics/Obstacles.js');
+  const { Terrain } = await import('./src/physics/Terrain.js');
+  const { Car } = await import('./src/physics/Car.js');
+  const { getStatsAtTiers } = await import('./src/data/vehicles.js');
+
+  // A drivable custom level: flat run, a hill, a ramp, bumps, a gap, water,
+  // a tire stack, and a seesaw — bot just holds gas.
+  const lvl = cl.newCustomLevel();
+  lvl.length = 120;
+  lvl.cells = Array.from({ length: 120 }, () => ({ h: 0 }));
+  for (let i = 20; i < 26; i++) lvl.cells[i].h = (i - 19) * 0.5;   // gentle rise
+  for (let i = 26; i < 32; i++) lvl.cells[i].h = 3 - (i - 26) * 0.5; // back down
+  for (let i = 45; i < 48; i++) lvl.cells[i].h = null;             // pit...
+  for (let i = 48; i < 120; i++) lvl.cells[i].h = -2;              // ...far side lower
+  for (let i = 60; i < 62; i++) lvl.cells[i].liquid = 'water';     // water
+  lvl.obstacles.push({ type: 'bumps', cell: 70, params: { count: 3, spacing: 130 } });
+  lvl.obstacles.push({ type: 'seesaw', cell: 85, params: { length: 380 } });
+  lvl.obstacles.push({ type: 'oil', cell: 100, params: { w: 200, push: 1 } });
+  lvl.obstacles.push({ type: 'press', cell: 108, params: { w: 100, clearance: 175, period: 3.4, phase: 0 } });
+
+  const level = cl.compileCustomLevel(lvl);
+  log('compiled: chains=' + level.chains.length + ' obstacles=' + level.obstacles.length + ' finishX=' + level.finishX);
+
+  const world = new PhysicsWorld();
+  const terrain = new Terrain(level, world);
+  const obs = new Obstacles(level, world);
+  const stats = getStatsAtTiers('pickup', { engine: 2, suspension: 2, tires: 2, brakes: 2 });
+  const car = new Car(stats, level.startX, level.startY);
+  car.addTo(world);
+
+  const input = { gas: true, brake: false };
+  let result = 'timeout';
+  let t = 0;
+  for (let step = 0; step < 60 * 90; step++) {
+    t = step / 60;
+    const verdict = car.update(input, 1 / 60, world.timestamp());
+    world.step(1000 / 60);
+    const pos = car.position();
+    if (verdict) { result = 'FAIL: ' + verdict + ' at x=' + Math.round(pos.x) + ' t=' + t.toFixed(1); break; }
+    if (pos.y > level.deathY) { result = 'FAIL: pit at x=' + Math.round(pos.x) + ' t=' + t.toFixed(1); break; }
+    if (pos.x > level.finishX) { result = 'WIN t=' + t.toFixed(1) + 's'; break; }
+  }
+  log('drive: ' + result);
+  log(result.startsWith('WIN') ? 'DRIVE PASS' : 'DRIVE RESULT (bot is naive; inspect)');
+} catch (e) {
+  log('FAIL: ' + e.message + '\n' + e.stack);
+}
+</script>
+</body>
+</html>

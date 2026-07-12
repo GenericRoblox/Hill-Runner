@@ -27,6 +27,7 @@ const STEP_MS = 1000 / 60;
 export class GameScreen {
   constructor(canvas) {
     this.canvas = canvas;
+    this.usesCanvas = true;
     this.state = 'idle';
 
     // Pause overlay buttons
@@ -47,12 +48,26 @@ export class GameScreen {
     });
   }
 
-  enter({ worldId, levelIndex, vehId: vehOverride }) {
-    this.worldId = worldId;
-    this.levelIndex = levelIndex;
-    this.worldDef = getWorld(worldId);
-    this.level = getLevel(worldId, levelIndex);
-    this.key = levelKey(worldId, levelIndex);
+  enter({ worldId, levelIndex, vehId: vehOverride, custom }) {
+    // Custom (player-created) levels arrive pre-compiled with a theme world;
+    // they earn stars/best times under their own key but never pay coins.
+    this.custom = custom || null;
+    if (custom) {
+      this.worldId = custom.theme;
+      this.levelIndex = 0;
+      this.worldDef = getWorld(custom.theme);
+      this.level = custom.level;
+      this.key = `custom-${custom.id}`;
+    } else {
+      this.worldId = worldId;
+      this.levelIndex = levelIndex;
+      this.worldDef = getWorld(worldId);
+      this.level = getLevel(worldId, levelIndex);
+      this.key = levelKey(worldId, levelIndex);
+    }
+    document.getElementById('btn-quit').textContent =
+      this.custom ? (this.custom.from === 'editor' ? 'Quit to Editor' : 'Quit to My Levels')
+        : 'Quit to Level Select';
 
     const vehId = vehOverride || saveData.getActiveVehicle();
     this.vehicleDef = getVehicleDef(vehId);
@@ -107,6 +122,12 @@ export class GameScreen {
     this._teardown();
     sound.stopEngine();
     input.onPause = input.onRestart = null;
+    if (this.custom && target === 'levelselect') {
+      // Custom runs return to where they were launched from.
+      if (this.custom.from === 'editor') screens.show('editor', { id: this.custom.id });
+      else screens.show('customlevels');
+      return;
+    }
     screens.show(target, target === 'levelselect' ? { worldId: this.worldId } : {});
   }
 
@@ -216,6 +237,7 @@ export class GameScreen {
       reason,
       onRetry: () => this.restart(),
       onQuit: () => this.quit(),
+      quitLabel: this.custom ? (this.custom.from === 'editor' ? 'Back to Editor' : 'My Levels') : null,
     });
   }
 
@@ -223,6 +245,28 @@ export class GameScreen {
     this.state = 'won';
     this.camera.shake = 0; // see _fail — a hard landing at the flag otherwise shakes forever
     music.stop(); // fade out right at the goal, not when they leave for the next level
+
+    if (this.custom) {
+      // Player-created level: track stars/best time, but no coin payout
+      // (custom levels would be a trivial coin farm).
+      const stars = calcStars(this.level, this.time, this.car.everFlipped);
+      saveData.recordResult(this.key, stars, this.time);
+      sound.win();
+      sound.updateEngine(0, false);
+      showResult({
+        won: true,
+        stars,
+        time: this.time,
+        bestTime: saveData.getBestTime(this.key),
+        airTime: this.car.airTime,
+        coins: null,
+        onRetry: () => this.restart(),
+        onQuit: () => this.quit(),
+        quitLabel: this.custom.from === 'editor' ? 'Back to Editor' : 'My Levels',
+      });
+      return;
+    }
+
     const prevBest = saveData.getLevelStars(this.key);
     const stars = calcStars(this.level, this.time, this.car.everFlipped);
     const coins = calcPayout(this.level, this.time, stars, this.car.airTime, prevBest);

@@ -23,7 +23,8 @@ export function showResult(r) {
     if (r.airTime > 0.5) {
       p.appendChild(el('div', { class: 'stat-line', text: `Air time: ${r.airTime.toFixed(1)}s` }));
     }
-    p.appendChild(el('div', { class: 'earn', text: `+${r.coins} coins` }));
+    // Custom levels pass coins: null — they award no payout.
+    if (r.coins != null) p.appendChild(el('div', { class: 'earn', text: `+${r.coins} coins` }));
     if (r.onGarage) {
       // One-time upgrade nudge (GameScreen sets onGarage the first time the
       // player can afford an engine upgrade).
@@ -47,7 +48,7 @@ export function showResult(r) {
     p.appendChild(el('button', { class: 'btn primary', text: 'Retry (R)', onclick: () => { hideResult(); r.onRetry(); } }));
   }
 
-  p.appendChild(el('button', { class: 'btn', text: 'Level Select', onclick: () => { hideResult(); r.onQuit(); } }));
+  p.appendChild(el('button', { class: 'btn', text: r.quitLabel || 'Level Select', onclick: () => { hideResult(); r.onQuit(); } }));
   overlay().classList.remove('hidden');
 }
 

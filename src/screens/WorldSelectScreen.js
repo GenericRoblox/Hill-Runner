@@ -36,6 +36,15 @@ export class WorldSelectScreen {
       }
       grid.appendChild(card);
     }
+
+    // Created Levels tab: the player's own levels + the level creator.
+    const custom = el('div', { class: 'card' });
+    custom.appendChild(el('div', { class: 'icon', text: '🛠️' }));
+    custom.appendChild(el('h3', { text: 'Created Levels' }));
+    custom.appendChild(el('div', { class: 'sub', text: 'Build, edit and play your own levels.' }));
+    custom.addEventListener('click', () => screens.show('customlevels'));
+    grid.appendChild(custom);
+
     s.appendChild(grid);
     this.root.appendChild(s);
   }

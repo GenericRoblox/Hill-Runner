@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>editor smoke</title></head>
+<body>
+<pre id="out"></pre>
+<script src="lib/matter.min.js"></script>
+<script type="module">
+const out = document.getElementById('out');
+const log = (s) => { out.textContent += s + '\n'; };
+window.addEventListener('error', (e) => log('WINDOW ERROR: ' + e.message + ' @ ' + e.filename + ':' + e.lineno));
+
+try {
+  const cl = await import('./src/data/customLevels.js');
+  const { PhysicsWorld } = await import('./src/physics/PhysicsWorld.js');
+  const { Obstacles } = await import('./src/physics/Obstacles.js');
+  const { Terrain } = await import('./src/physics/Terrain.js');
+
+  // Build a level exercising every editor feature: hills, gaps, all liquids,
+  // mud/ice, and one of every obstacle type.
+  const lvl = cl.newCustomLevel();
+  lvl.length = 300;
+  lvl.cells = Array.from({ length: 300 }, () => ({ h: 0 }));
+  // hill
+  for (let i = 10; i < 20; i++) lvl.cells[i].h = i - 10;
+  for (let i = 20; i < 30; i++) lvl.cells[i].h = 30 - i;
+  // gap
+  for (let i = 35; i < 39; i++) lvl.cells[i].h = null;
+  // liquids
+  for (let i = 45; i < 50; i++) lvl.cells[i].liquid = 'water';
+  for (let i = 55; i < 60; i++) lvl.cells[i].liquid = 'lava';
+  for (let i = 65; i < 70; i++) lvl.cells[i].liquid = 'acid';
+  for (let i = 75; i < 82; i++) lvl.cells[i].liquid = 'sludge';
+  // surfaces
+  for (let i = 90; i < 95; i++) lvl.cells[i].s = 'mud';
+  for (let i = 95; i < 100; i++) lvl.cells[i].s = 'ice';
+  // one of every obstacle
+  let cell = 105;
+  for (const t of cl.OBSTACLE_TYPES) {
+    lvl.obstacles.push({ type: t.id, cell, params: cl.defaultParams(t) });
+    cell += cl.cellsFor(t, cl.defaultParams(t)) + 2;
+  }
+  log('placed ' + lvl.obstacles.length + ' obstacle types, last cell ' + cell);
+  if (cell >= lvl.length) log('WARN: obstacles overflow level length');
+
+  const compiled = cl.compileCustomLevel(lvl);
+  log('chains: ' + compiled.chains.length);
+  log('walls: ' + compiled.walls.length);
+  log('obstacle defs: ' + compiled.obstacles.length);
+  log('finishX: ' + compiled.finishX + '  deathY: ' + compiled.deathY);
+  log('startX/Y: ' + compiled.startX + '/' + compiled.startY);
+
+  // sanity: chains are x-monotonic and non-empty
+  for (const c of compiled.chains) {
+    if (c.length < 2) log('BAD CHAIN: <2 points');
+    for (let i = 1; i < c.length; i++) {
+      if (c[i].x < c[i - 1].x) log('BAD CHAIN: x not monotonic at ' + c[i].x);
+    }
+  }
+
+  // Build actual physics objects from it (what the editor preview + game do).
+  const world = new PhysicsWorld();
+  const terrain = new Terrain(compiled, world);
+  const obs = new Obstacles(compiled, world);
+  log('terrain bodies: ' + terrain.bodies.length);
+  log('obstacle items: ' + obs.items.length);
+  // step a few frames to shake out mover crashes
+  for (let i = 0; i < 120; i++) world.step(1000 / 60);
+  log('stepped 120 frames OK');
+  obs.destroy(); terrain.destroy(); world.destroy();
+
+  // Render pass on an offscreen canvas (parked preview, like the editor).
+  const cv = document.createElement('canvas');
+  cv.width = 1200; cv.height = 700;
+  const ctx = cv.getContext('2d');
+  const world2 = new PhysicsWorld();
+  const obs2 = new Obstacles(compiled, world2);
+  ctx.save(); ctx.translate(-100, -100);
+  obs2.render(ctx, { x: 0, y: 0 });
+  obs2.renderOverlay(ctx);
+  ctx.restore();
+  log('render pass OK');
+  obs2.destroy(); world2.destroy();
+
+  log('SMOKE PASS');
+} catch (e) {
+  log('FAIL: ' + e.message + '\n' + e.stack);
+}
+</script>
+</body>
+</html>

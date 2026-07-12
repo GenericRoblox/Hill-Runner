@@ -13,6 +13,8 @@ import { LevelSelectScreen } from './screens/LevelSelectScreen.js';
 import { GarageScreen } from './screens/GarageScreen.js';
 import { UpgradeScreen } from './screens/UpgradeScreen.js';
 import { GameScreen } from './screens/GameScreen.js';
+import { EditorScreen } from './screens/EditorScreen.js';
+import { CustomLevelsScreen } from './screens/CustomLevelsScreen.js';
 
 const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
@@ -37,6 +39,8 @@ screens.register('levelselect', new LevelSelectScreen(menuRoot));
 screens.register('garage', new GarageScreen(menuRoot));
 screens.register('upgrade', new UpgradeScreen(menuRoot));
 screens.register('game', new GameScreen(canvas));
+screens.register('editor', new EditorScreen(canvas));
+screens.register('customlevels', new CustomLevelsScreen(menuRoot));
 
 // Dev deep-link: ?screen=<name> or ?world=4&level=2 jumps straight there;
 // add &bot=1 to hold the gas down (for screenshotting mid-level).
@@ -55,7 +59,12 @@ if (q.has('world')) {
   const warp = +(q.get('warp') || 0);
   for (let i = 0; i < warp * 12; i++) screens.update(100);
 } else {
-  screens.show(q.get('screen') || 'home');
+  // &id=<customLevelId> targets a specific created level (editor deep-link);
+  // &cam=<x> sets the editor's starting scroll.
+  screens.show(q.get('screen') || 'home', {
+    id: q.get('id') || undefined,
+    cam: q.get('cam') || undefined,
+  });
 }
 
 const bonus = saveData.claimDailyBonus(DAILY_BONUS);
@@ -71,7 +80,7 @@ function frame(now) {
   // players report that as a crash. Log it and keep the loop alive.
   try {
     screens.update(dt);
-    if (screens.currentName === 'game') {
+    if (screens.current?.usesCanvas) {
       screens.render(ctx);
     }
   } catch (e) {
