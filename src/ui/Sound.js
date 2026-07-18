@@ -1,6 +1,8 @@
 // Minimal WebAudio engine hum: pitch scales with speed (spec §8), plus one-shot
 // stingers for landings, crashes and level completion. No audio assets needed.
 
+import { isSilenced } from './AudioBus.js';
+
 class Sound {
   constructor() {
     this.ctx = null;
@@ -14,11 +16,15 @@ class Sound {
       try {
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       } catch { return false; }
+      // A context born while the game is muted starts 'running' — park it.
+      if (isSilenced()) this.ctx.suspend()?.catch?.(() => {});
     }
     // iOS Safari also has an 'interrupted' state (phone call, lock screen,
     // Control Center); treat anything not running as resumable, and swallow
     // the rejection resume() throws when called outside a user gesture.
-    if (this.ctx.state !== 'running') this.ctx.resume()?.catch?.(() => {});
+    // While silenced (mute toggle, ad break, hidden tab) leave it suspended —
+    // AudioBus resumes it when the silence lifts.
+    if (this.ctx.state !== 'running' && !isSilenced()) this.ctx.resume()?.catch?.(() => {});
     return true;
   }
 
@@ -49,6 +55,10 @@ class Sound {
   }
 
   _blip(freq, duration, type = 'square', volume = 0.06, slideTo = null) {
+    // A suspended context's currentTime is frozen, so a blip scheduled while
+    // muted doesn't vanish — it QUEUES, and every stinger fired during the
+    // mute plays in a burst the moment the player unmutes. Silenced = dropped.
+    if (isSilenced()) return;
     if (!this.ensureContext()) return;
     const t = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();

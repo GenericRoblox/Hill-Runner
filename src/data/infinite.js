@@ -6,8 +6,8 @@
 // ground (the spacing rules from CLAUDE.md are baked into the features), so
 // features can be concatenated in any order without overlapping.
 //
-// Difficulty d grows with distance (0 at the start line, 1 at ~2km, creeping
-// to 1.4): gaps widen, presses/compactors/fireballs cycle faster, hills grow.
+// Difficulty d grows with distance (0 at the start line, 1 at ~1.2km, creeping
+// to 1.6): gaps widen, presses/compactors/fireballs cycle faster, hills grow.
 
 import { LevelBuilder } from './levels.js';
 
@@ -39,7 +39,9 @@ export const FLIP_COINS = 15;      // per full airborne rotation (× payMult)
 export const AIR_COINS_PER_S = 4;  // air-time trickle (× payMult, capped 60s)
 
 export function difficultyAt(x) {
-  return Math.max(0, Math.min(1.4, x / (PX_PER_M * 2000)));
+  // Full difficulty lands while the first tank of fuel is still fresh
+  // (~1.2km), then keeps creeping — an endless run should never go stale.
+  return Math.max(0, Math.min(1.6, x / (PX_PER_M * 1200)));
 }
 
 // Deterministic small RNG so a run's world is reproducible from its seed.
@@ -157,7 +159,7 @@ function terrainRun(b, d, rng, ctx) {
 // Jump over a pit. Small gaps get a terrain lip; big ones (later runs) get a
 // wooden ramp — "ramps next to larger jumps".
 function gapJump(b, d, rng) {
-  const g = 110 + (70 + 150 * rng()) * Math.min(1.2, d + 0.15);
+  const g = 110 + (70 + 150 * rng()) * Math.min(1.3, d + 0.15);
   b.flat(r(rng, 180, 300));
   if (g > 200) {
     const rampH = 62 + g * 0.1;

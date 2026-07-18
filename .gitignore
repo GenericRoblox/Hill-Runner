@@ -1,3 +1,7 @@
 .claude/settings.local.json
 .DS_Store
 Thumbs.db
+
+# Portal builds — regenerate with tools\build-platforms.ps1 (committing them
+# would duplicate every texture/sprite/track twice over).
+builds/

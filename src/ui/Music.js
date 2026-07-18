@@ -5,6 +5,8 @@
 // game loop. GameScreen owns the only calls to playNext()/stop(), so music
 // never plays outside a level (menus stay silent).
 
+import { isSilenced } from './AudioBus.js';
+
 const TRACKS = ['music/beat-1.mp3', 'music/beat-2.mp3', 'music/beat-3.mp3'];
 const FADE_S = 1.6;
 const VOLUME = 0.32;
@@ -23,8 +25,12 @@ class Music {
       try {
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
       } catch { return false; }
+      // A context born while the game is muted starts 'running' — park it.
+      if (isSilenced()) this.ctx.suspend()?.catch?.(() => {});
     }
-    if (this.ctx.state !== 'running') this.ctx.resume()?.catch?.(() => {});
+    // See Sound.ensureContext: while silenced, stay suspended; AudioBus
+    // resumes when the silence lifts.
+    if (this.ctx.state !== 'running' && !isSilenced()) this.ctx.resume()?.catch?.(() => {});
     return true;
   }
 

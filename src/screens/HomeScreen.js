@@ -1,5 +1,6 @@
 import { el, screens } from '../core/ScreenManager.js';
 import { saveData } from '../core/SaveData.js';
+import { setUserMuted, isUserMuted } from '../ui/AudioBus.js';
 
 export class HomeScreen {
   constructor(root) { this.root = root; }
@@ -28,6 +29,25 @@ export class HomeScreen {
       class: 'btn', text: '🔧 Garage',
       onclick: () => screens.show('garage'),
     }));
+    // Endgame reward: appears only once every level of every world is starred
+    // (the Worlds menu shows the locked version until then).
+    if (saveData.isCreatorUnlocked()) {
+      col.appendChild(el('button', {
+        class: 'btn concrete', text: '🛠️ Level Creator',
+        onclick: () => screens.show('customlevels'),
+      }));
+    }
+    const muteLabel = () => (isUserMuted() ? '🔇 Sound: Off' : '🔊 Sound: On');
+    const muteBtn = el('button', {
+      class: 'btn small',
+      text: muteLabel(),
+      style: 'display:block; margin: 12px auto 0;',
+      onclick: () => {
+        setUserMuted(!isUserMuted());
+        muteBtn.textContent = muteLabel();
+      },
+    });
+    col.appendChild(muteBtn);
     s.appendChild(col);
 
     s.appendChild(el('p', {

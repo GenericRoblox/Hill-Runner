@@ -1,4 +1,4 @@
-import { el, screens, showToast } from '../core/ScreenManager.js';
+import { el, screens, showToast, starIcon } from '../core/ScreenManager.js';
 import { saveData } from '../core/SaveData.js';
 import { WORLDS, levelKey } from '../data/levels.js';
 
@@ -24,7 +24,8 @@ export class WorldSelectScreen {
       card.appendChild(el('h3', { text: w.name }));
       if (unlocked) {
         card.appendChild(el('div', { class: 'sub', text: w.desc }));
-        card.appendChild(el('div', { class: 'stars', text: `★ ${stars} / ${w.levels.length * 3}` }));
+        card.appendChild(el('div', { class: 'stars' },
+          [starIcon(true, 16), el('span', { text: `${stars} / ${w.levels.length * 3}` })]));
         card.addEventListener('click', () => screens.show('levelselect', { worldId: w.id }));
       } else if (w.playable) {
         const prev = WORLDS.find(p => p.id === w.id - 1);
@@ -38,11 +39,22 @@ export class WorldSelectScreen {
     }
 
     // Created Levels tab: the player's own levels + the level creator.
-    const custom = el('div', { class: 'card' });
-    custom.appendChild(el('div', { class: 'icon', text: '🛠️' }));
+    // Endgame reward — locked until every level of every world is starred.
+    // Concrete board, not wood: this tab is the construction site.
+    const creator = saveData.isCreatorUnlocked();
+    const custom = el('div', { class: `card concrete${creator ? '' : ' locked'}` });
+    custom.appendChild(el('div', { class: 'icon', text: creator ? '🛠️' : '🔒' }));
     custom.appendChild(el('h3', { text: 'Created Levels' }));
-    custom.appendChild(el('div', { class: 'sub', text: 'Build, edit and play your own levels.' }));
-    custom.addEventListener('click', () => screens.show('customlevels'));
+    custom.appendChild(el('div', {
+      class: 'sub',
+      text: creator
+        ? 'Build, edit and play your own levels.'
+        : 'Star every level in every world to unlock the level creator.',
+    }));
+    custom.addEventListener('click', () => {
+      if (creator) screens.show('customlevels');
+      else showToast('🔒 Star every level in every world first!');
+    });
     grid.appendChild(custom);
 
     s.appendChild(grid);

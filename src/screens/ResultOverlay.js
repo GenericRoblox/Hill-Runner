@@ -1,10 +1,58 @@
 // Win/fail end-of-run overlay (DOM).
 
-import { el } from '../core/ScreenManager.js';
+import { el, starIcon } from '../core/ScreenManager.js';
 import { formatTime } from '../ui/HUD.js';
 
 const overlay = () => document.getElementById('result-overlay');
 const panel = () => document.getElementById('result-panel');
+
+// Three stars that pop in one after another (filled and empty alike, so the
+// row reads as one gesture). Each star transitions in when its timer adds
+// .pop — see the .big-stars .star rule for why this isn't an animation-delay.
+function starsRow(stars) {
+  const row = el('div', { class: 'big-stars' });
+  for (let i = 0; i < 3; i++) {
+    const s = starIcon(i < stars, 42);
+    setTimeout(() => s.classList.add('pop'), 250 + i * 160);
+    row.appendChild(s);
+  }
+  return row;
+}
+
+// Coin totals tick up instead of just appearing. Skipped under
+// prefers-reduced-motion (CSS already stills everything else).
+function countUp(node, total, suffix = ' coins') {
+  if (total <= 0 || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    node.textContent = `+${total}${suffix}`;
+    return;
+  }
+  node.textContent = `+0${suffix}`;
+  const t0 = performance.now();
+  const dur = 700;
+  const tick = (now) => {
+    const t = Math.min(1, (now - t0) / dur);
+    const eased = 1 - Math.pow(1 - t, 2.2);
+    node.textContent = `+${Math.round(total * eased)}${suffix}`;
+    if (t < 1 && node.isConnected) requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}
+
+// Confetti burst over the whole overlay (spec §8's completion juice).
+function burstConfetti() {
+  const colors = ['#ffd75e', '#ffab2e', '#e0524a', '#58bf43', '#7ac9f0', '#fff6e3'];
+  const box = el('div', { class: 'confetti' });
+  for (let i = 0; i < 28; i++) {
+    const piece = el('i');
+    piece.style.left = `${Math.random() * 100}%`;
+    piece.style.background = colors[i % colors.length];
+    piece.style.animationDuration = `${1.5 + Math.random() * 1.1}s`;
+    piece.style.animationDelay = `${Math.random() * 0.45}s`;
+    box.appendChild(piece);
+  }
+  overlay().appendChild(box);
+  setTimeout(() => box.remove(), 3400);
+}
 
 export function showResult(r) {
   const p = panel();
@@ -26,19 +74,21 @@ export function showResult(r) {
       p.appendChild(el('div', { class: 'stat-line', text: `Air time ${r.airTime.toFixed(1)}s: +${r.airCoins} coins` }));
     }
     const total = (r.milestoneCoins || 0) + (r.flipCoins || 0) + (r.airCoins || 0);
-    if (total > 0) p.appendChild(el('div', { class: 'earn', text: `+${total} coins` }));
+    if (total > 0) {
+      const earn = el('div', { class: 'earn' });
+      countUp(earn, total);
+      p.appendChild(earn);
+    }
     p.appendChild(el('button', { class: 'btn primary', text: 'Drive Again (R)', onclick: () => { hideResult(); r.onRetry(); } }));
     p.appendChild(el('button', { class: 'btn', text: 'Infinite Menu', onclick: () => { hideResult(); r.onQuit(); } }));
     overlay().classList.remove('hidden');
+    if (r.newBest) burstConfetti();
     return;
   }
 
   if (r.won) {
     p.appendChild(el('h2', { text: 'Level Complete!' }));
-    p.appendChild(el('div', {
-      class: 'big-stars',
-      text: '★'.repeat(r.stars) + '☆'.repeat(3 - r.stars),
-    }));
+    p.appendChild(starsRow(r.stars));
     p.appendChild(el('div', { class: 'stat-line', text: `Time: ${formatTime(r.time)}` }));
     if (r.bestTime != null) {
       p.appendChild(el('div', { class: 'stat-line', text: `Best: ${formatTime(r.bestTime)}` }));
@@ -47,7 +97,11 @@ export function showResult(r) {
       p.appendChild(el('div', { class: 'stat-line', text: `Air time: ${r.airTime.toFixed(1)}s` }));
     }
     // Custom levels pass coins: null — they award no payout.
-    if (r.coins != null) p.appendChild(el('div', { class: 'earn', text: `+${r.coins} coins` }));
+    if (r.coins != null) {
+      const earn = el('div', { class: 'earn' });
+      countUp(earn, r.coins);
+      p.appendChild(earn);
+    }
     if (r.onGarage) {
       // One-time upgrade nudge (GameScreen sets onGarage the first time the
       // player can afford an engine upgrade).
@@ -64,6 +118,9 @@ export function showResult(r) {
     if (r.onNext) {
       p.appendChild(el('button', { class: 'btn primary', text: 'Next Level ▶', onclick: () => { hideResult(); r.onNext(); } }));
     }
+    if (r.onNextWorld) {
+      p.appendChild(el('button', { class: 'btn blue', text: 'Next World ▶', onclick: () => { hideResult(); r.onNextWorld(); } }));
+    }
     p.appendChild(el('button', { class: 'btn', text: 'Retry', onclick: () => { hideResult(); r.onRetry(); } }));
   } else {
     p.appendChild(el('h2', { text: 'Wrecked!' }));
@@ -73,8 +130,10 @@ export function showResult(r) {
 
   p.appendChild(el('button', { class: 'btn', text: r.quitLabel || 'Level Select', onclick: () => { hideResult(); r.onQuit(); } }));
   overlay().classList.remove('hidden');
+  if (r.won) burstConfetti();
 }
 
 export function hideResult() {
+  overlay().querySelector('.confetti')?.remove();
   overlay().classList.add('hidden');
 }

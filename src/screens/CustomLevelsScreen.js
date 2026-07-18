@@ -1,6 +1,6 @@
 // "Created Levels" tab: list, play, edit, delete and create custom levels.
 
-import { el, screens, showToast } from '../core/ScreenManager.js';
+import { el, screens, showToast, starIcon } from '../core/ScreenManager.js';
 import { saveData } from '../core/SaveData.js';
 import { getWorld } from '../data/levels.js';
 import { formatTime } from '../ui/HUD.js';
@@ -51,7 +51,8 @@ export class CustomLevelsScreen {
         class: 'sub',
         text: `${world.name} theme · ${Math.round(lvl.length * CELL_W / 100) / 10}k px · ${lvl.obstacles.length} obstacles`,
       }));
-      card.appendChild(el('div', { class: 'stars', text: '★'.repeat(stars) + '☆'.repeat(3 - stars) }));
+      card.appendChild(el('div', { class: 'stars' },
+        [0, 1, 2].map(n => starIcon(n < stars, 16))));
       if (best != null) card.appendChild(el('div', { class: 'sub', text: `Best: ${formatTime(best)}` }));
 
       const row = el('div', { class: 'custom-actions' });

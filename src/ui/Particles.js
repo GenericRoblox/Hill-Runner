@@ -93,6 +93,33 @@ export class ParticleSystem {
     });
   }
 
+  // Dust poof on a hard landing: a burst fanning out from under each wheel,
+  // scaled by impact. Same cheap sim as tire spray, lighter dust colors.
+  emitLandingDust(car, impact, prof) {
+    const dust = ['#e6d9ba', '#d3c4a0', prof.fallback || '#bfae88'];
+    for (const w of car.wheels) {
+      const n = Math.min(12, Math.round(3 + impact * 0.7));
+      for (let i = 0; i < n; i++) {
+        if (this.parts.length >= MAX_PARTICLES) this.parts.shift();
+        const side = Math.random() < 0.5 ? -1 : 1;
+        const sp = 50 + Math.random() * impact * 16;
+        this.parts.push({
+          x: w.position.x + side * (4 + Math.random() * w.circleRadius),
+          y: w.position.y + w.circleRadius * 0.7,
+          vx: side * sp * (0.5 + Math.random() * 0.6),
+          vy: -(30 + Math.random() * sp * 0.5),
+          rot: Math.random() * Math.PI * 2,
+          vrot: (Math.random() - 0.5) * 8,
+          size: 4.5 + Math.random() * 6,
+          age: 0,
+          life: 0.4 + Math.random() * 0.35,
+          sprite: null,
+          color: dust[(Math.random() * dust.length) | 0],
+        });
+      }
+    }
+  }
+
   update(dt) {
     const parts = this.parts;
     for (let i = parts.length - 1; i >= 0; i--) {

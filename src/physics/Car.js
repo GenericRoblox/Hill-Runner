@@ -379,7 +379,11 @@ export class Car {
     if (a > 2.1) this.everFlipped = true;
 
     const inverted = a > 1.9;
-    const slow = this.chassis.speed < 2 && Math.abs(this.chassis.angularVelocity) < 0.08;
+    // "Stuck" demands genuine stillness: a flipped car that's still sliding,
+    // rolling or being rocked free is in motion and must never fail out from
+    // under the player. The thresholds only forgive micro-jiggle a player
+    // couldn't distinguish from rest.
+    const slow = this.chassis.speed < 0.9 && Math.abs(this.chassis.angularVelocity) < 0.06;
     const chassisDragging = now - this.chassis.plugin.lastContact < CONTACT_WINDOW_MS;
     const wedged = inverted || (chassisDragging && airborne && a > 1.3);
 
@@ -389,6 +393,21 @@ export class Car {
       if (this.stuckTimer >= STUCK_GRACE_S) return 'stuck';
     } else {
       this.stuckTimer = 0;
+    }
+
+    // Beached: balanced dead-still on top of something undrivable (a wall or
+    // beam top, wheels overhanging both sides). No wheel contact = no drive,
+    // and the chassis touch blocks air control, so nothing can ever move the
+    // car again — the flip check never fires because the car can sit level.
+    // Long fuse: a rocking/teetering car still has angular velocity and keeps
+    // resetting the timer.
+    const beached = airborne && !freeFloating && !inCanopy
+      && this.chassis.speed < 0.35 && Math.abs(this.chassis.angularVelocity) < 0.05;
+    if (beached) {
+      this.beachTimer = (this.beachTimer || 0) + dtSeconds;
+      if (this.beachTimer >= 4) return 'beached';
+    } else {
+      this.beachTimer = 0;
     }
     return null;
   }

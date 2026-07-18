@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>next world button check</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<div id="result-overlay" class="overlay hidden"><div class="panel" id="result-panel"></div></div>
+<script src="lib/matter.min.js"></script>
+<script type="module">
+// Throwaway: render the final-level win screen (Next World button) directly.
+import { showResult } from './src/screens/ResultOverlay.js';
+showResult({
+  won: true, stars: 2, time: 41.2, bestTime: 38.9, airTime: 6.1, coins: 380,
+  onNextWorld: () => {}, onRetry: () => {}, onQuit: () => {},
+});
+</script>
+</body>
+</html>

@@ -21,16 +21,19 @@ try {
   const levelIndex = Number(params.get('level') || 2);
   const tFrom = Number(params.get('from') || 0);
   const tiers = {
+    stock: { engine: 0, suspension: 0, tires: 0, brakes: 0 },
+    t1: { engine: 1, suspension: 0, tires: 0, brakes: 0 },
     t2: { engine: 2, suspension: 1, tires: 1, brakes: 1 },
     t3: { engine: 3, suspension: 2, tires: 2, brakes: 2 },
     max: { engine: 3, suspension: 3, tires: 3, brakes: 3 },
   }[params.get('tier') || 't2'];
+  const vehId = params.get('veh') || 'pickup';
 
   const level = getLevel(worldId, levelIndex);
   const pw = new PhysicsWorld();
   new Terrain(level, pw);
   const obstacles = new Obstacles(level, pw);
-  const stats = getStatsAtTiers('pickup', tiers);
+  const stats = getStatsAtTiers(vehId, tiers);
   const car = new Car(stats, level.startX, level.startY);
   car.addTo(pw);
 
@@ -52,10 +55,10 @@ try {
         else { waiting = true; wball = it; }
       } else if (it.type === 'press') {
         const d = it.cx - car.position().x;
-        if (d < 40 || d > 260) continue;
+        if (d < 40 || d > Math.max(260, 170 + car.velocity().x * 30)) continue;
         const openFrac = (it.groundY - 14 - (it.body.position.y + it.h / 2)) / (it.clearance - 14);
         if (openFrac > 0.5 && it.body.plugin.rising) it._cleared = true;
-        else waiting = true;
+        else { waiting = true; if (d < 130) backOff = true; }
       } else if (it.type === 'rockfall') {
         const d = it.x - car.position().x;
         const stopZone = 170 + Math.max(0, car.velocity().x) * 30;

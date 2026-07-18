@@ -57,10 +57,17 @@ try {
           else waiting = true;
         } else if (it.type === 'press') {
           const d = it.cx - car.position().x;
-          if (d < 40 || d > 260) continue;
+          // Speed-scaled engagement, like rockfall: a fast car must start
+          // braking well out or it coasts to a stop under the block.
+          if (d < 40 || d > Math.max(260, 170 + car.velocity().x * 30)) continue;
           const openFrac = (it.groundY - 14 - (it.body.position.y + it.h / 2)) / (it.clearance - 14);
           if (openFrac > 0.5 && it.body.plugin.rising) it._cleared = true;
-          else waiting = true;
+          else {
+            waiting = true;
+            // Rolled to a stop under the block (e.g. braking for another
+            // hazard at the same time): back out — parking there is lethal.
+            if (d < 130) backOff = true;
+          }
         } else if (it.type === 'rockfall') {
           const d = it.x - car.position().x;
           const stopZone = 170 + Math.max(0, car.velocity().x) * 30;

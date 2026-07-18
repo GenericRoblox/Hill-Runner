@@ -53,6 +53,18 @@ export function el(tag, attrs = {}, children = []) {
   return node;
 }
 
+// Inline SVG rating star. The game's fonts don't carry ★/☆ glyphs (Fredoka
+// has none at all), and font-fallback stars vary wildly across platforms —
+// an SVG renders identically everywhere and takes the cartoon outline style.
+export function starIcon(filled, size = 15) {
+  return el('span', {
+    class: 'star' + (filled ? ' filled' : ''),
+    html: `<svg viewBox="0 0 24 24" width="${size}" height="${size}" aria-hidden="true">`
+      + '<polygon points="12,1.5 14.8,8.1 22,8.8 16.6,13.5 18.2,20.5 12,16.8 5.8,20.5 7.4,13.5 2,8.8 9.2,8.1"/>'
+      + '</svg>',
+  });
+}
+
 export function showToast(msg, ms = 2500) {
   const t = document.getElementById('toast');
   t.textContent = msg;

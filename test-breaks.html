@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ad-break cadence + platform test</title>
+</head>
+<body>
+  <pre id="testlog"></pre>
+
+  <script type="module">
+    // Ad-break cadence + portal-seam test. Run like the other harnesses:
+    //   msedge --headless=new --dump-dom http://localhost:8000/test-breaks.html
+    // The real break manager is exercised against a stubbed platform.showAd(),
+    // so this asserts OUR rules (3-5 wins, wins only, never mid-run, always
+    // hands control back) — the portals' own frequency caps sit on top.
+    //
+    // It also guards the naming rule in src/core/Breaks.js: an ad-blocker-bait
+    // filename anywhere in the module graph silently kills the whole game.
+    import { ads } from './src/core/Breaks.js';
+    import { platform } from './src/core/Platform.js';
+    import { saveData } from './src/core/SaveData.js';
+
+    const log = [];
+    let failures = 0;
+    const ok = (cond, msg) => {
+      log.push(`${cond ? 'PASS' : 'FAIL'}  ${msg}`);
+      if (!cond) failures++;
+    };
+
+    // --- Stub the portal's ad call. The real one is async and may resolve
+    // without an ad; what matters here is that the manager awaits it.
+    let adsShown = 0;
+    let blockingDuringAd = false;
+    platform.showAd = async () => {
+      adsShown++;
+      blockingDuringAd = ads.blocking; // the game loop must be frozen right now
+      await new Promise(r => setTimeout(r, 5));
+      return true;
+    };
+
+    // Walk the module graph the way the browser does and flag any URL an ad
+    // blocker would eat. `AdManager.js` did exactly that: blocked as a script,
+    // which killed the graph and left the player staring at an empty hillside.
+    const BAIT = /(^|[^a-z])(ads?|advert|adman|banner|sponsor|popup)([^a-z]|$)/i;
+    const graphUrls = async (entry) => {
+      const seen = new Set();
+      const walk = async (url) => {
+        if (seen.has(url)) return;
+        seen.add(url);
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const src = await res.text();
+        for (const m of src.matchAll(/(?:from|import)\s*['"](\.[^'"]+)['"]/g)) {
+          await walk(new URL(m[1], url).href);
+        }
+      };
+      await walk(entry);
+      return [...seen];
+    };
+
+    const run = async () => {
+      // --- Wrecks and retries must never march the player toward an ad.
+      let started = 0;
+      for (let i = 0; i < 20; i++) await ads.gate(() => started++); // 20 retries, no wins
+      ok(adsShown === 0, `20 wreck-retries showed no ads (shown=${adsShown})`);
+      ok(started === 20, `every retry still started the level (started=${started})`);
+
+      // --- The first ad lands somewhere in the 3-5 win window, never before.
+      adsShown = 0;
+      let winsBeforeFirstAd = 0;
+      for (let i = 1; i <= 6 && adsShown === 0; i++) {
+        ads.noteLevelWon();
+        await ads.gate(() => {});
+        if (adsShown === 0) winsBeforeFirstAd = i;
+      }
+      ok(adsShown === 1, `an ad fired within 6 wins (shown=${adsShown})`);
+      ok(winsBeforeFirstAd >= 2 && winsBeforeFirstAd <= 4,
+        `first ad came after 3-5 wins (played ${winsBeforeFirstAd + 1} levels first)`);
+      ok(blockingDuringAd, 'the game loop was frozen (ads.blocking) while the ad played');
+      ok(ads.blocking === false, 'the loop was released once the ad finished');
+
+      // --- Cadence holds over a long session, and never runs dry.
+      adsShown = 0;
+      let plays = 0;
+      for (let i = 0; i < 40; i++) {
+        ads.noteLevelWon();
+        await ads.gate(() => plays++);
+      }
+      ok(plays === 40, `every win still led into the next level (plays=${plays})`);
+      ok(adsShown >= 8 && adsShown <= 13,
+        `40 wins produced ${adsShown} ads (expected 8-13, i.e. one per 3-5 levels)`);
+
+      // --- A broken/blocked ad must never strand the player behind a frozen screen.
+      platform.showAd = async () => { throw new Error('simulated adblock'); };
+      ads.levelsWon = 99;
+      let recovered = false;
+      await ads.gate(() => { recovered = true; });
+      ok(recovered, 'a failing ad still started the level');
+      ok(ads.blocking === false, 'a failing ad released the game loop');
+
+      // --- The portal seam: storage round-trips through platform.storage.
+      const coins = saveData.getCoins();
+      saveData.addCoins(7);
+      saveData.load();
+      ok(saveData.getCoins() === coins + 7, 'the profile round-tripped through platform.storage');
+      saveData.data.coins = coins;
+      saveData.save();
+
+      ok(platform.name === 'web', `base build reports platform "${platform.name}" (portals override this file)`);
+
+      // --- No file the browser fetches may look like ad tech to a blocker.
+      const urls = await graphUrls(new URL('src/main.js', location.href).href);
+      const bait = urls.map(u => new URL(u).pathname).filter(p => BAIT.test(p));
+      ok(bait.length === 0,
+        bait.length
+          ? `AD-BLOCKER BAIT in the module graph — a blocker will kill the whole game: ${bait.join(', ')}`
+          : `none of the ${urls.length} module URLs would trip an ad blocker`);
+
+      log.push('');
+      log.push(failures === 0 ? 'ALL PASS' : `${failures} FAILURE(S)`);
+      document.getElementById('testlog').textContent = log.join('\n');
+    };
+
+    run();
+  </script>
+</body>
+</html>

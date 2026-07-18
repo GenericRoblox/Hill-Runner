@@ -252,7 +252,9 @@ export class LevelBuilder {
   // Molten pool (kind 'lava' or 'acid'), cuts its own pit — but unlike water
   // touching it is near-instant death, no skimming, so the far edge resumes
   // `dy` LOWER (undershooting a level exit would always graze the pool).
-  // Sandwich between slope(150, -35) lips to keep the baseline.
+  // Enter from FLAT road (the float rule: an up-lip launches fast cars into
+  // a long float and dribbles slow ones into the pool); follow with a
+  // slope(150.., -35) to climb back out of the basin.
   moltenPit(w, kind = 'lava', dy = 70) {
     this.obstacles.push({ type: 'molten', x0: this.x, y0: this.y, w, drop: dy + 35, kind });
     return this.gap(w, dy);
@@ -501,9 +503,9 @@ function level3() {
   const b = new LevelBuilder(0, GROUND_Y);
   b.flat(450)
     .hill(400, 60)
-    .flat(250)            // speed run-up
-    .slope(200, -90)      // terrain launch lip
-    .gap(250, 70)
+    .flat(300)            // speed run-up
+    .slope(280, -90)      // terrain launch lip (long: a stock car must crest it with speed)
+    .gap(170, 70)         // sized to a stock car's ~3 px/step lip-exit speed
     .slope(260, 90)       // downhill landing — match your nose to the slope!
     .flat(320)
     .ramp(170, 75)        // first wooden ramp: hit it with speed
@@ -591,17 +593,17 @@ function level7() {
   const b = new LevelBuilder(0, GROUND_Y);
   b.flat(400)
     .hills(2, 400, 90)
-    .flat(180)
-    .slope(180, -70)
-    .gap(230, 50)
+    .flat(220)
+    .slope(240, -70)
+    .gap(180, 60)         // stock-sized: the eased lip launches flat, not up
     .slope(200, 70)
-    .flat(150)
+    .flat(280)            // room to settle the gap landing before the plank
     .seesaw(380, 55)      // new: ride the plank over the pivot
     .flat(500)
     .hill(380, 120)
     .flat(350)
-    .slope(170, -80)
-    .gap(200, 70)
+    .slope(250, -80)      // long lip: stock must still crest with jump speed
+    .gap(180, 70)
     .slope(240, 90)
     .hills(2, 380, 100)
     .flat(450);
@@ -637,8 +639,8 @@ function level9() {
   const b = new LevelBuilder(0, GROUND_Y);
   b.flat(400)
     .hills(3, 400, 80)
-    .flat(180)
-    .slope(170, -70)
+    .flat(220)
+    .slope(240, -70)
     .gap(230, 60)
     .slope(220, 80)
     .mudDip(320, 60)
@@ -646,7 +648,7 @@ function level9() {
     .flat(200)
     .ropeBridge(320)      // new: swaying planks over the drop
     .flat(250)
-    .slope(180, -85)
+    .slope(260, -85)      // keep the peak grade under the tier-1 climb limit
     .gap(250, 70)
     .slope(250, 90)
     .hills(2, 370, 110)
@@ -763,8 +765,8 @@ function town3() {
     .hill(320, 75)
     .tree(190, 100)      // canopy right past the crest: big air gets snagged
     .flat(420)
-    .slope(180, -70)
-    .gap(250, 55)
+    .slope(240, -70)
+    .gap(210, 55)
     .slope(220, 75);
   b.tree(240, 105);      // hangs over the landing runout
   b.flat(500)
@@ -1358,15 +1360,15 @@ function mines2() {
   const b = new LevelBuilder(0, GROUND_Y);
   b.flat(500)
     .hill(380, 55)
-    .flat(320)
+    .flat(620)            // the hill crest launches — full braking room (float rule)
     .rockfallPit(180)
     .slope(160, -45)
-    .flat(300)
+    .flat(430)            // brake + a full stop-wait-and-go run-up before pit 2
     .rockfallPit(190, { phase: 0.5 })
     .slope(160, -45)
     .flat(330)
     .hill(360, 65)
-    .flat(300)
+    .flat(620)            // same rule: no chute inside a crest-launch landing
     .rockfallPit(200, { phase: 0.25 })
     .slope(160, -45)
     .flat(480);
@@ -1409,18 +1411,18 @@ function mines3() {
 
 function mines4() {
   const b = new LevelBuilder(0, GROUND_Y);
-  b.flat(480)
-    .slope(150, -35)
+  // Molten pools are entered from FLAT road (the float rule: an up-lip
+  // launches fast cars into a long float, a slow car dribbles off it into
+  // the pool); the slope after each pit climbs back out of the basin.
+  b.flat(630)
     .moltenPit(250)
     .slope(150, -35)
     .flat(320)
     .hill(340, 60)
-    .flat(260)
-    .slope(150, -35)
+    .flat(410)
     .moltenPit(280)
     .slope(160, -35)
-    .flat(380)
-    .slope(170, -35)
+    .flat(550)
     .moltenPit(300)
     .slope(180, -35)
     .flat(480);
@@ -1568,7 +1570,7 @@ function mines9() {
     .jumpHole(220, 138)
     .flat(480)
     .hill(360, 65)
-    .flat(300)
+    .flat(620)            // rockfall needs braking room clear of the crest launch
     .rockfallPit(200, { phase: 0.5 })
     .slope(160, -45)
     .flat(320)

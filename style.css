@@ -13,6 +13,15 @@
   font-display: swap;
 }
 
+/* Rounded body face (variable weight) — the typographic sibling of the
+   toy-block buttons. Self-hosted like Beachday: no CDN requests. */
+@font-face {
+  font-family: 'Fredoka';
+  src: url('font/fredoka.ttf') format('truetype');
+  font-weight: 300 700;
+  font-display: swap;
+}
+
 :root {
   --sky-hi: #7ac9f0;
   --sky-lo: #d9f3ff;
@@ -37,7 +46,7 @@ html, body {
     radial-gradient(circle at 82% 10%, #fff7cf 0 56px, rgba(255, 247, 207, 0.4) 88px, transparent 150px),
     linear-gradient(var(--sky-hi), var(--sky-lo));
   color: var(--ink);
-  font-family: 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
+  font-family: 'Fredoka', 'Trebuchet MS', 'Segoe UI', system-ui, sans-serif;
   -webkit-user-select: none; user-select: none;
   touch-action: none;
   -webkit-tap-highlight-color: transparent;
@@ -182,6 +191,12 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
   box-shadow: 0 5px 0 var(--amber-deep), 0 9px 14px rgba(20, 40, 60, 0.25);
 }
 .btn.primary:active { box-shadow: 0 1px 0 var(--amber-deep), 0 3px 6px rgba(20, 40, 60, 0.2); }
+/* Sky-blue block: the "Next World" jump on a world's final win screen */
+.btn.blue {
+  background: linear-gradient(#8fd0f2, #56a9e0);
+  box-shadow: 0 5px 0 #33719f, 0 9px 14px rgba(20, 40, 60, 0.25);
+}
+.btn.blue:active { box-shadow: 0 1px 0 #33719f, 0 3px 6px rgba(20, 40, 60, 0.2); }
 .btn.small {
   width: auto; display: inline-block;
   padding: 7px 14px;
@@ -214,6 +229,28 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
   gap: 16px;
 }
 
+/* Menu entry: cards and home buttons tumble in like blocks being set down.
+   Menus rebuild their DOM on every enter, so these replay naturally.
+   Transform-only (no opacity): if anything ever stalls the animation clock,
+   a card sits slightly low instead of stranded invisible. */
+@keyframes block-in {
+  from { transform: translateY(16px) scale(0.94); }
+  to   { transform: translateY(0) scale(1); }
+}
+.grid > *, .center-col > * {
+  animation: block-in 0.38s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+.grid > *:nth-child(2), .center-col > *:nth-child(2)  { animation-delay: 45ms; }
+.grid > *:nth-child(3), .center-col > *:nth-child(3)  { animation-delay: 90ms; }
+.grid > *:nth-child(4), .center-col > *:nth-child(4)  { animation-delay: 135ms; }
+.grid > *:nth-child(5), .center-col > *:nth-child(5)  { animation-delay: 180ms; }
+.grid > *:nth-child(6)  { animation-delay: 225ms; }
+.grid > *:nth-child(7)  { animation-delay: 270ms; }
+.grid > *:nth-child(8)  { animation-delay: 315ms; }
+.grid > *:nth-child(9)  { animation-delay: 360ms; }
+.grid > *:nth-child(10) { animation-delay: 405ms; }
+.grid > *:nth-child(n+11) { animation-delay: 450ms; }
+
 .card {
   background: var(--wood);
   background-size: 260px;
@@ -230,16 +267,34 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
   filter: grayscale(0.8) brightness(0.92);
   cursor: default;
 }
+/* Created Levels / Level Creator: a concrete slab among the wooden boards —
+   the construction-site tab. Light wash keeps the ink text readable. */
+.card.concrete, .btn.concrete {
+  background:
+    linear-gradient(rgba(214, 218, 224, 0.55), rgba(214, 218, 224, 0.55)),
+    url('textures/concrete-texture.jpg');
+  background-size: cover, 240px;
+  box-shadow: 0 6px 0 #6f747d, 0 11px 16px rgba(20, 40, 60, 0.18);
+}
+.btn.concrete { box-shadow: 0 5px 0 #6f747d, 0 9px 14px rgba(20, 40, 60, 0.2); }
+.btn.concrete:active { box-shadow: 0 1px 0 #6f747d, 0 3px 6px rgba(20, 40, 60, 0.2); }
+.card.concrete:active { box-shadow: 0 2px 0 #6f747d; }
+.card.concrete.locked:hover, .card.concrete.locked:active {
+  transform: none;
+  box-shadow: 0 6px 0 #6f747d, 0 11px 16px rgba(20, 40, 60, 0.18);
+}
 .card.locked:hover, .card.locked:active { transform: none; }
 .card.selected { border-color: var(--amber-deep); box-shadow: 0 0 0 3px var(--amber), 0 6px 0 var(--board-edge); }
 .card h3 { margin-bottom: 6px; font-size: 1.25rem; }
 .card .sub { color: var(--ink-soft); font-size: 0.85rem; font-weight: 600; }
 .card .stars {
-  color: #e88400;
-  font-size: 1.15rem;
-  margin-top: 6px;
-  letter-spacing: 2px;
-  text-shadow: 0 1px 0 rgba(70, 40, 0, 0.45);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  color: #a35c00;
+  font-weight: 700;
+  font-size: 0.95rem;
 }
 .card .price { color: var(--go-deep); font-weight: 700; margin-top: 6px; }
 .card .icon { font-size: 2.2rem; margin-bottom: 8px; filter: drop-shadow(0 3px 0 rgba(30, 18, 4, 0.25)); }
@@ -326,14 +381,70 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
   width: 100%; max-width: 380px;
   text-align: center;
   box-shadow: 0 8px 0 var(--board-edge), 0 18px 30px rgba(10, 25, 40, 0.35);
+  animation: panel-pop 0.32s cubic-bezier(0.2, 1.55, 0.4, 1) both;
+}
+@keyframes panel-pop {
+  from { opacity: 0; transform: translateY(22px) scale(0.88); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Result stars pop in one at a time. Transition-on-class-add rather than a
+   delayed fill-both animation: if anything ever stalls the animation clock,
+   the class flip still lands the star at its visible end state. */
+.big-stars .star {
+  display: inline-block;
+  opacity: 0;
+  transform: scale(0) rotate(-40deg);
+  transition: opacity 0.35s, transform 0.45s cubic-bezier(0.2, 1.8, 0.4, 1);
+}
+.big-stars .star.pop {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+}
+
+/* Confetti burst on a win (pieces get inline left/color/duration/delay) */
+.confetti {
+  position: absolute; inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border-radius: inherit;
+}
+.confetti i {
+  position: absolute; top: -16px;
+  width: 9px; height: 13px;
+  border-radius: 3px;
+  opacity: 0;
+  animation: confetti-fall linear both;
+}
+@keyframes confetti-fall {
+  from { opacity: 1; transform: translateY(0) rotate(0deg); }
+  to   { opacity: 0.85; transform: translateY(110vh) rotate(650deg); }
 }
 .panel h2 { margin-bottom: 18px; font-size: 1.9rem; }
 .panel .big-stars {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin: 12px 0;
+  /* Infinite mode reuses this row for its big distance figure */
+  font-family: var(--display);
   font-size: 2.4rem;
   color: #e88400;
-  letter-spacing: 6px;
-  margin: 10px 0;
   text-shadow: 0 2px 0 rgba(70, 40, 0, 0.45);
+}
+
+/* SVG rating stars (see starIcon in ScreenManager.js) */
+.star svg {
+  display: block;
+  fill: rgba(67, 41, 15, 0.22);
+  stroke: rgba(67, 41, 15, 0.5);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+.star.filled svg {
+  fill: #ffb92e;
+  stroke: #8a5200;
+  filter: drop-shadow(0 2px 0 rgba(70, 40, 0, 0.35));
 }
 .panel .stat-line { color: var(--ink-soft); font-weight: 600; margin: 4px 0; }
 .panel .earn { color: var(--go-deep); font-size: 1.4rem; font-weight: 700; margin: 12px 0; }
@@ -344,6 +455,21 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
   margin: 4px auto 10px;
   max-width: 320px;
   line-height: 1.35;
+}
+
+/* Boot-failure panel (#boot-error): the one screen the player sees when the
+   game could not start at all — e.g. opened over file://, where ES modules
+   never load. Commands need to be copyable, hence the mono runs. */
+#boot-error .stat-line { line-height: 1.5; }
+#boot-error code {
+  display: inline-block;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 0.85rem;
+  background: rgba(255, 246, 227, 0.85);
+  border-radius: 8px;
+  padding: 2px 8px;
+  margin-top: 2px;
+  user-select: all;
 }
 
 /* ---------- Toast ---------- */
@@ -360,9 +486,9 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
   border-radius: 999px;
   z-index: 100;
   box-shadow: 0 4px 0 var(--board-edge), 0 10px 20px rgba(10, 25, 40, 0.3);
-  transition: opacity 0.4s;
+  transition: opacity 0.35s, transform 0.35s cubic-bezier(0.2, 1.5, 0.4, 1);
 }
-#toast.hidden { opacity: 0; pointer-events: none; }
+#toast.hidden { opacity: 0; pointer-events: none; transform: translate(-50%, -18px); }
 
 .hint {
   color: var(--ink);

@@ -153,6 +153,10 @@ export class Obstacles {
 
   _bumps({ x0, groundY, count, spacing, r }) {
     for (let i = 0; i < count; i++) {
+      // Crown height is load-bearing tuning: burying these deeper reshuffles
+      // downstream outcomes in every level with a bump row (a low-slung car
+      // can high-center on a crown — Car.js's 'beached' verdict ends that
+      // cleanly instead of leaving a frozen run).
       this.all.push(Bodies.circle(x0 + i * spacing, groundY - r * 0.35, r, {
         isStatic: true, friction: 0.9, label: 'terrain',
       }));
@@ -931,6 +935,17 @@ export class Obstacles {
     ctx.fillStyle = '#c9762e';
     ctx.fillRect(x0 + w + 4, jibY, 20, y0 - jibY);
     ctx.fillRect(x0 - 34, jibY - 16, w + 58, 16);
+    // Tower lattice bracing
+    ctx.strokeStyle = '#9c5a20';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (let ty = jibY + 14; ty < y0 - 18; ty += 32) {
+      ctx.moveTo(x0 + w + 6, ty);
+      ctx.lineTo(x0 + w + 22, ty + 16);
+      ctx.moveTo(x0 + w + 22, ty);
+      ctx.lineTo(x0 + w + 6, ty + 16);
+    }
+    ctx.stroke();
     // Cables from jib to platform corners
     ctx.strokeStyle = '#494f59';
     ctx.lineWidth = 3.5;
@@ -940,6 +955,17 @@ export class Obstacles {
     ctx.moveTo(px + w / 2 - 14, py);
     ctx.lineTo(px + w / 2 - 14, jibY);
     ctx.stroke();
+    // Pulley blocks where the cables meet the jib
+    for (const cx of [px - w / 2 + 14, px + w / 2 - 14]) {
+      ctx.beginPath();
+      ctx.arc(cx, jibY - 2, 7, 0, Math.PI * 2);
+      ctx.fillStyle = '#3c414b';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx, jibY - 2, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#e8c34a';
+      ctx.fill();
+    }
     // Platform deck
     ctx.fillStyle = '#6a7181';
     ctx.fillRect(px - w / 2 + 4, py, w - 8, 22);
@@ -1172,9 +1198,29 @@ export class Obstacles {
   }
 
   _renderTreeTrunk(ctx, { x, groundY, clearance, r }) {
+    const topY = groundY - clearance - r;
     ctx.save();
+    // Tapered trunk with a root flare instead of a plain rectangle
+    ctx.beginPath();
+    ctx.moveTo(x - 7, topY);
+    ctx.lineTo(x + 7, topY);
+    ctx.lineTo(x + 10, groundY - 14);
+    ctx.quadraticCurveTo(x + 12, groundY - 4, x + 20, groundY);
+    ctx.lineTo(x - 20, groundY);
+    ctx.quadraticCurveTo(x - 12, groundY - 4, x - 10, groundY - 14);
+    ctx.closePath();
     ctx.fillStyle = texPattern('wood', '#7d5a34', 120) || '#6b4f30';
-    ctx.fillRect(x - 9, groundY - clearance - r, 18, clearance + r);
+    ctx.fill();
+    ctx.strokeStyle = '#4a3520';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    // Bark line
+    ctx.beginPath();
+    ctx.moveTo(x - 2, topY + 14);
+    ctx.quadraticCurveTo(x - 5, groundY - clearance * 0.5, x - 2, groundY - 12);
+    ctx.strokeStyle = 'rgba(74, 53, 32, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -1208,12 +1254,34 @@ export class Obstacles {
     ctx.strokeStyle = '#6b4f28';
     ctx.lineWidth = 3;
     ctx.stroke();
-    // Deck plank line
+    // Carpentry inside the wedge: upright studs + a diagonal brace, so the
+    // ramp reads as something somebody nailed together, not a solid block.
+    ctx.strokeStyle = 'rgba(94, 70, 38, 0.55)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    for (const f of [0.45, 0.7, 0.88]) {
+      const sx = x + w * f;
+      ctx.moveTo(sx, y);
+      ctx.lineTo(sx, y - h * f + 4);
+    }
+    ctx.moveTo(x + w * 0.3, y);
+    ctx.lineTo(x + w - 6, y - h + 8);
+    ctx.stroke();
+    // Deck plank line + board ties across it
     ctx.beginPath();
     ctx.moveTo(x, y);
     ctx.lineTo(x + w, y - h);
     ctx.lineWidth = 6;
     ctx.strokeStyle = '#c49a62';
+    ctx.stroke();
+    ctx.strokeStyle = '#6b4f28';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for (let f = 0.18; f < 1; f += 0.16) {
+      const dx = x + w * f, dy = y - h * f;
+      ctx.moveTo(dx - 3, dy - 4);
+      ctx.lineTo(dx + 3, dy + 4);
+    }
     ctx.stroke();
     ctx.restore();
   }
@@ -1240,6 +1308,18 @@ export class Obstacles {
     ctx.strokeStyle = '#6b4f28';
     ctx.lineWidth = 2.5;
     ctx.strokeRect(-half, -7.5, half * 2, 15);
+    // End stops (little kick plates) + the pivot bolt through the middle
+    ctx.fillStyle = '#8a6b42';
+    ctx.fillRect(-half + 2, -13, 8, 6);
+    ctx.fillRect(half - 10, -13, 8, 6);
+    ctx.beginPath();
+    ctx.arc(0, 0, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#43290f';
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-1.5, -1.5, 1.8, 0, Math.PI * 2);
+    ctx.fillStyle = '#c49a62';
+    ctx.fill();
     ctx.restore();
   }
 
@@ -1653,34 +1733,39 @@ export class Obstacles {
   // is drawn across the mouth at car height, so the car never appears to
   // drive through structure on its way onto the platform.
   _renderElevator(ctx, { body, x0, y0, w, drop }) {
-    const px = body.position.x, py = body.position.y - 11;
-    const floorY = y0 + drop;
+    const px = body.position.x, py = body.position.y - 11; // deck top
+    const deckBot = py + 22;
+    // The deck's LOWEST travel puts its underside here — that is the visual
+    // shaft floor, so the deck always lands flush on the base plate and the
+    // piston can never poke up past the deck (the old fixed-height sleeve
+    // stuck out above a fully-lowered platform).
+    const shaftBot = y0 + drop + 22;
     ctx.save();
     // Shaft void the platform descends through, so the hole reads clearly
     // instead of the platform looking like it floats in open air.
-    const grad = ctx.createLinearGradient(0, y0, 0, floorY);
+    const grad = ctx.createLinearGradient(0, y0, 0, shaftBot + 12);
     grad.addColorStop(0, '#16171b');
     grad.addColorStop(1, '#050506');
     ctx.fillStyle = grad;
-    ctx.fillRect(x0, y0, w, drop);
+    ctx.fillRect(x0, y0, w, shaftBot + 12 - y0);
     // Guide rails
     ctx.fillStyle = '#3a3d45';
-    ctx.fillRect(x0 - 8, y0 - 6, 12, drop + 6);
-    ctx.fillRect(x0 + w - 4, y0 - 6, 12, drop + 6);
+    ctx.fillRect(x0 - 8, y0 - 6, 12, shaftBot + 18 - y0);
+    ctx.fillRect(x0 + w - 4, y0 - 6, 12, shaftBot + 18 - y0);
     // Hazard stripes across the mouth (clamped to exactly w)
     for (let sx = 0, i = 0; sx < w; sx += 24, i++) {
       ctx.fillStyle = i % 2 ? '#1c1e22' : '#e8c34a';
       ctx.fillRect(x0 + sx, y0 - 10, Math.min(24, w - sx), 10);
     }
-    // Hydraulic piston: fixed outer sleeve rising from the shaft floor,
-    // inner rod telescoping up to the platform underside.
-    const sleeveH = Math.max(40, drop * 0.4);
-    ctx.fillStyle = '#33363d';
-    ctx.fillRect(px - 30, floorY - 12, 60, 12); // base plate
-    ctx.fillStyle = '#454b57';
-    ctx.fillRect(px - 17, floorY - sleeveH, 34, sleeveH);
+    // Telescoping hydraulic piston: inner rod down from the deck underside,
+    // outer sleeve rising to meet it; both collapse to nothing at full drop.
+    const ext = Math.max(0, shaftBot - deckBot);
     ctx.fillStyle = '#7d8798';
-    ctx.fillRect(px - 8, py + 22, 16, Math.max(0, floorY - sleeveH - (py + 22)));
+    ctx.fillRect(px - 8, deckBot, 16, ext);
+    ctx.fillStyle = '#454b57';
+    ctx.fillRect(px - 15, shaftBot - ext * 0.55, 30, ext * 0.55);
+    ctx.fillStyle = '#33363d';
+    ctx.fillRect(px - 30, shaftBot, 60, 12); // base plate the deck lands on
     // Platform deck
     ctx.fillStyle = '#6a7181';
     ctx.fillRect(px - w / 2 + 4, py, w - 8, 22);

@@ -1,7 +1,8 @@
 // Level grid + pre-level modal with recommended-vehicle picker (spec §6.3).
 
-import { el, screens } from '../core/ScreenManager.js';
+import { el, screens, starIcon } from '../core/ScreenManager.js';
 import { saveData } from '../core/SaveData.js';
+import { ads } from '../core/Breaks.js';
 import { getWorld, levelKey } from '../data/levels.js';
 import { VEHICLES } from '../data/vehicles.js';
 import { formatTime } from '../ui/HUD.js';
@@ -32,7 +33,8 @@ export class LevelSelectScreen {
       card.appendChild(el('h3', { text: unlocked ? level.name : `🔒 ${level.name}` }));
       card.appendChild(el('div', { class: 'sub', text: unlocked ? level.concept : 'Earn a star on the previous level.' }));
       if (unlocked) {
-        card.appendChild(el('div', { class: 'stars', text: '★'.repeat(stars) + '☆'.repeat(3 - stars) }));
+        card.appendChild(el('div', { class: 'stars' },
+          [0, 1, 2].map(n => starIcon(n < stars, 16))));
         if (best != null) card.appendChild(el('div', { class: 'sub', text: `Best: ${formatTime(best)}` }));
         card.addEventListener('click', () => this._showPreLevel(level, i));
       }
@@ -76,7 +78,7 @@ export class LevelSelectScreen {
       onclick: () => {
         saveData.setActiveVehicle(selected);
         overlay.remove();
-        screens.show('game', { worldId: this.worldId, levelIndex });
+        ads.gate(() => screens.show('game', { worldId: this.worldId, levelIndex }));
       },
     }));
     panel.appendChild(el('button', { class: 'btn', text: 'Cancel', onclick: () => overlay.remove() }));

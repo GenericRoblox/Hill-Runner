@@ -3,6 +3,7 @@
 
 import { el, screens, showToast } from '../core/ScreenManager.js';
 import { saveData } from '../core/SaveData.js';
+import { ads } from '../core/Breaks.js';
 import { getWorld } from '../data/levels.js';
 import { INFINITE_THEMES } from '../data/infinite.js';
 
@@ -43,7 +44,7 @@ export class InfiniteSelectScreen {
         if (theme.payMult > 1) {
           card.appendChild(el('div', { class: 'sub', text: `coin payout ×${theme.payMult}` }));
         }
-        card.addEventListener('click', () => screens.show('infinitegame', { themeId: theme.id }));
+        card.addEventListener('click', () => ads.gate(() => screens.show('infinitegame', { themeId: theme.id })));
       } else {
         card.appendChild(el('div', { class: 'price', text: `🪙 ${theme.cost} to unlock` }));
         card.addEventListener('click', () => this._confirmUnlock(theme, world));

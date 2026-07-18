@@ -112,17 +112,25 @@
 
       let bodyPeak = 0;
       const Composite = Matter.Composite;
+      // Drive a few seconds to exercise streaming, then cut the gas: the
+      // stuck watchdog only fires on a car that's genuinely at rest (motion —
+      // even without progress — resets its fuse), so park it and let the
+      // teleported maxX guarantee no progress is ever recorded.
       for (let i = 0; i < 1400 && game.state === 'playing'; i++) {
+        if (i === 40) input.getState = () => ({ gas: false, brake: false });
         screens.update(50); // 3 steps per call ≈ 70s of sim total
         if (i % 40 === 0 && game.physics) {
           bodyPeak = Math.max(bodyPeak, Composite.allBodies(game.physics.engine.world).length);
         }
       }
-      // The teleported maxX means the car can't make new progress, so the
-      // out-of-steam watchdog should end the run at ~12s — that's the test.
+      // The parked car makes no progress past the teleported maxX, so the
+      // stuck watchdog should end the run at ~12s of stillness — the test.
       const dist = Math.round(game.distM);
+      // < 25s: ~2s of driving + coast-to-rest (terrain-dependent) + the 12s
+      // stillness fuse. The 32s fuel tank ending the run instead would land
+      // past 25s and fail this line — the watchdog must get there first.
       log(`run: ${dist}m in ${game.time.toFixed(1)}s state=${game.state} `
-        + (dist >= 500 && game.state === 'failed' && game.time < 20 ? 'OK (watchdog fired)' : 'FAIL'));
+        + (dist >= 500 && game.state === 'failed' && game.time < 25 ? 'OK (watchdog fired)' : 'FAIL'));
       log(`streaming: peak ${bodyPeak} bodies ` + (bodyPeak > 0 && bodyPeak < 700 ? 'OK' : 'FAIL'));
       log(`chains live: ${game.level.chains.length} ` + (game.level.chains.length < 120 ? 'OK' : 'FAIL'));
 

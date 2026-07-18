@@ -16,6 +16,8 @@ import { music } from '../ui/Music.js';
 import { input } from '../core/InputManager.js';
 import { screens } from '../core/ScreenManager.js';
 import { saveData } from '../core/SaveData.js';
+import { platform } from '../core/Platform.js';
+import { ads } from '../core/Breaks.js';
 import { getWorld, getLevel, levelKey } from '../data/levels.js';
 
 const DEBUG_HUD = new URLSearchParams(location.search).has('debug');
@@ -101,7 +103,11 @@ export class GameScreen {
     this.camera = new Camera(this.canvas);
     this.time = 0;
     this.accumulator = 0;
+    this.popups = [];   // floating world-space text ("Flip!")
+    this._spinAcc = 0;  // airborne rotation accumulator for flip popups
+    this._prevSpinAngle = this.car.chassis.angle;
     this.state = 'playing';
+    platform.gameplayStart(); // every start and retry lands here
   }
 
   _teardown() {
@@ -114,7 +120,15 @@ export class GameScreen {
     }
   }
 
+  // Every retry path (the Retry button, the pause menu, the R key) funnels
+  // through here, so this is the one place an ad break has to guard. Custom
+  // and editor test runs are exempt — they aren't levels.
   restart() {
+    if (this.custom) return this._restart();
+    ads.gate(() => this._restart());
+  }
+
+  _restart() {
     // Retrying from the win screen: _win() already faded music out at the
     // goal, so bring it back for the replay (retrying after a fail never
     // stopped it, so this is a no-op there).
@@ -127,6 +141,7 @@ export class GameScreen {
   quit(target = 'levelselect') {
     this.state = 'idle';
     this._teardown();
+    platform.gameplayStop();
     sound.stopEngine();
     input.onPause = input.onRestart = null;
     if (this.custom && target === 'levelselect') {
@@ -140,6 +155,7 @@ export class GameScreen {
 
   exit() {
     if (this.physics) this._teardown();
+    platform.gameplayStop();
     sound.stopEngine();
     music.stop(); // covers quitting to a menu; no-op if _win() already faded it out
     hideResult();
@@ -150,6 +166,7 @@ export class GameScreen {
   togglePause() {
     if (this.state === 'playing') {
       this.state = 'paused';
+      platform.gameplayStop();
       document.getElementById('pause-overlay').classList.remove('hidden');
     } else if (this.state === 'paused') {
       this.resume();
@@ -160,6 +177,7 @@ export class GameScreen {
     this._hidePause();
     input.reset();
     this.state = 'playing';
+    platform.gameplayStart();
   }
   _hidePause() {
     document.getElementById('pause-overlay').classList.add('hidden');
@@ -183,12 +201,15 @@ export class GameScreen {
       if (impact > 0) {
         this.camera.addShake(impact * 0.7);
         sound.thud();
+        this.particles.emitLandingDust(this.car, impact, this.tireProfiles.normal);
       }
 
       this._emitTireSpray();
-      this.particles.update(STEP_MS / 1000);
+      this._trackFlips(this.physics.timestamp());
+      this._updateFx(STEP_MS / 1000);
 
       if (verdict === 'stuck') return this._fail('Flipped and stuck!');
+      if (verdict === 'beached') return this._fail('Beached! No wheels on the ground.');
       if (verdict === 'sank') return this._fail('Sank into open water!');
       if (verdict === 'dissolved') return this._fail('Dissolved in the sludge!');
       if (verdict === 'melted') {
@@ -216,6 +237,40 @@ export class GameScreen {
     this.camera.follow(this.car.position(), this.car.velocity(), dtMs / 1000);
   }
 
+  // Particles + floating popups age together (both screens' fixed-step loops
+  // call this once per step).
+  _updateFx(dt) {
+    this.particles.update(dt);
+    for (let i = this.popups.length - 1; i >= 0; i--) {
+      const p = this.popups[i];
+      p.age += dt;
+      if (p.age >= p.life) this.popups.splice(i, 1);
+    }
+  }
+
+  // World-space celebration text that pops off the car ("Flip!", coin bonuses).
+  _popup(text, color = '#ffd75e') {
+    const pos = this.car.position();
+    this.popups.push({ text, color, x: pos.x, y: pos.y - 64, age: 0, life: 1.25 });
+  }
+
+  // Full airborne rotations get a popup — pure feel in normal levels (coins
+  // come from stars/time); InfiniteGameScreen does its own counting because
+  // flips pay out there.
+  _trackFlips(now) {
+    const angle = this.car.chassis.angle;
+    if (this.car.groundedWheelCount(now) === 0) {
+      this._spinAcc += angle - this._prevSpinAngle;
+      if (Math.abs(this._spinAcc) > Math.PI * 1.9) {
+        this._spinAcc = 0;
+        this._popup('Flip!'); // no coin sound: finite levels don't pay per flip
+      }
+    } else {
+      this._spinAcc = 0;
+    }
+    this._prevSpinAngle = angle;
+  }
+
   // Kick surface-matched debris off any grounded, rotating wheel. Surface
   // kind comes from the wheel's freshest contact friction (mud 0.1, ice 0.05
   // vs ~0.85 road — same signal Car.update uses for terrain grip).
@@ -234,6 +289,7 @@ export class GameScreen {
 
   _fail(reason) {
     this.state = 'failed';
+    platform.gameplayStop();
     // camera.follow (the only thing that decays shake) stops with the run —
     // clear any leftover shake or the world jitters under the overlay forever.
     this.camera.shake = 0;
@@ -250,6 +306,7 @@ export class GameScreen {
 
   _win() {
     this.state = 'won';
+    platform.gameplayStop();
     this.camera.shake = 0; // see _fail — a hard landing at the flag otherwise shakes forever
     music.stop(); // fade out right at the goal, not when they leave for the next level
 
@@ -281,6 +338,8 @@ export class GameScreen {
     saveData.addCoins(coins);
     sound.win();
     sound.updateEngine(0, false);
+    ads.noteLevelWon(); // only wins march the player toward an ad break
+    if (stars === 3) platform.happytime(); // portals use this to gauge a good moment
 
     // One-time nudge: the first time the player can afford the pickup's
     // first engine upgrade, point them at the garage.
@@ -291,6 +350,12 @@ export class GameScreen {
     if (upgradeHint) saveData.markUpgradeHintShown();
 
     const hasNext = !!getLevel(this.worldId, this.levelIndex + 1);
+    // Final level of a world: finishing pays ≥1 star, which is exactly what
+    // unlocks the next world — so offer the jump straight into it.
+    const nextWorld = hasNext ? null : getWorld(this.worldId + 1);
+    const onNextWorld = nextWorld && nextWorld.playable && nextWorld.levels.length
+      ? () => ads.gate(() => screens.show('game', { worldId: nextWorld.id, levelIndex: 0 }))
+      : null;
     showResult({
       won: true,
       stars,
@@ -299,8 +364,9 @@ export class GameScreen {
       airTime: this.car.airTime,
       coins,
       onNext: hasNext
-        ? () => screens.show('game', { worldId: this.worldId, levelIndex: this.levelIndex + 1 })
+        ? () => ads.gate(() => screens.show('game', { worldId: this.worldId, levelIndex: this.levelIndex + 1 }))
         : null,
+      onNextWorld,
       onRetry: () => this.restart(),
       onQuit: () => this.quit(),
       onGarage: upgradeHint ? () => this.quit('garage') : null,
@@ -335,6 +401,10 @@ export class GameScreen {
     ctx.fillStyle = sky;
     ctx.fillRect(0, 0, width, height);
 
+    // Clouds want an open daytime-ish sky: not tunnels, not the smogged
+    // factory, not the castle's torchlit night.
+    if (!w.cave && !w.factory && !w.castle) this._drawClouds(ctx, width, height);
+
     const [pFar, pNear] = w.parallax || ['rgba(110, 150, 90, 0.35)', 'rgba(90, 130, 70, 0.45)'];
     this._drawParallax(ctx, width, height, 0.15, 0.55, pFar);
     this._drawParallax(ctx, width, height, 0.35, 0.68, pNear);
@@ -352,6 +422,7 @@ export class GameScreen {
     this._drawCar(ctx);
     this.particles.render(ctx);
     this.obstacleSet.renderOverlay(ctx); // tree canopies hide a snagged car
+    this._drawPopups(ctx);
     ctx.restore();
 
     renderHUD(ctx, {
@@ -361,7 +432,8 @@ export class GameScreen {
       targetTime: this.level.targetTime,
       sludge: this.car.sludgeLethality,
       width,
-      ...(this._hudExtras ? this._hudExtras() : null), // infinite mode: distance etc.
+      height, // fuel gauge's low-tank vignette needs the full frame
+      ...(this._hudExtras ? this._hudExtras() : null), // infinite mode: distance/fuel etc.
     });
 
     if (input.touchActive) {
@@ -397,6 +469,57 @@ export class GameScreen {
       ctx.fillStyle = '#9ff09f';
       ctx.fillText(t, 12, y);
     });
+    ctx.restore();
+  }
+
+  // Puffy cartoon clouds drifting on a slow parallax band. Deterministic
+  // world-x buckets (like the castle torches), plus a gentle time drift.
+  _drawClouds(ctx, width, height) {
+    const t = this.physics ? this.physics.timestamp() / 1000 : 0;
+    const offset = this.camera.x * 0.22 + t * 7;
+    const b0 = Math.floor(offset / 560) - 1;
+    const b1 = Math.floor((offset + width) / 560) + 1;
+    ctx.save();
+    ctx.fillStyle = '#ffffff';
+    for (let k = b0; k <= b1; k++) {
+      const sx = k * 560 + ((k * 131 % 260) + 260) % 260 - offset;
+      const sy = height * (0.1 + (((k * 47 % 23) + 23) % 23 / 23) * 0.24);
+      const s = 0.7 + (((k * 29 % 13) + 13) % 13 / 13) * 0.75;
+      ctx.globalAlpha = 0.4 + (((k * 17 % 7) + 7) % 7 / 7) * 0.25;
+      // Classic puff: a wide soft base with round lobes rising out of it
+      ctx.beginPath();
+      ctx.ellipse(sx, sy + 8 * s, 44 * s, 12 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+      for (const [dx, dy, r] of [[-26, 2, 15], [-6, -8, 21], [18, -3, 17], [34, 6, 12]]) {
+        ctx.beginPath();
+        ctx.arc(sx + dx * s, sy + dy * s, r * s, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  _drawPopups(ctx) {
+    if (!this.popups || this.popups.length === 0) return;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const p of this.popups) {
+      const t = p.age / p.life;
+      const scale = t < 0.18 ? 0.4 + (t / 0.18) * 0.7 : 1.1 - (t - 0.18) * 0.12;
+      ctx.save();
+      ctx.translate(p.x, p.y - t * 72);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = t < 0.65 ? 1 : 1 - (t - 0.65) / 0.35;
+      ctx.font = '30px Beachday, Fredoka, sans-serif';
+      ctx.lineWidth = 7;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(43, 26, 8, 0.9)';
+      ctx.strokeText(p.text, 0, 0);
+      ctx.fillStyle = p.color;
+      ctx.fillText(p.text, 0, 0);
+      ctx.restore();
+    }
     ctx.restore();
   }
 
@@ -570,7 +693,24 @@ export class GameScreen {
     const groundPat = tex.ground && texPattern(tex.ground[0], tex.ground[1], tex.ground[2] || 260);
     const stripePat = tex.stripe && texPattern(tex.stripe[0], tex.stripe[1], 140);
     const mudPat = texPattern('mud', '#6b4a2a', 160);
-    for (const chain of this.level.chains) {
+    // Diorama aprons: the ground reads as continuing flat past both ends of
+    // the playfield instead of stopping at a sheer dirt cliff. Purely visual
+    // (no bodies). Ends are found every frame because infinite mode's chain
+    // list is live — chunks stream in and out of it.
+    let first = null, last = null;
+    for (const c of this.level.chains) {
+      if (!first || c[0].x < first[0].x) first = c;
+      if (!last || c[c.length - 1].x > last[last.length - 1].x) last = c;
+    }
+    const chains = [...this.level.chains];
+    if (first) {
+      chains.push([{ x: first[0].x - 2600, y: first[0].y }, { x: first[0].x, y: first[0].y }]);
+    }
+    if (last) {
+      const e = last[last.length - 1];
+      chains.push([{ x: e.x, y: e.y }, { x: e.x + 2600, y: e.y }]);
+    }
+    for (const chain of chains) {
       ctx.beginPath();
       ctx.moveTo(chain[0].x, bottom);
       for (const p of chain) ctx.lineTo(p.x, p.y);
@@ -702,12 +842,19 @@ export class GameScreen {
     ctx.moveTo(x, y);
     ctx.lineTo(x, y - 110);
     ctx.stroke();
-    // Checkered flag
+    // Pole cap
+    ctx.beginPath();
+    ctx.arc(x, y - 112, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#e8c34a';
+    ctx.fill();
+    // Checkered flag, waving: each column ripples harder toward the free edge.
+    const t = this.time * 6;
     const fw = 46, fh = 30, cell = fw / 4;
-    for (let r = 0; r < 2; r++) {
-      for (let c = 0; c < 4; c++) {
+    for (let c = 0; c < 4; c++) {
+      const wave = Math.sin(t + c * 0.9) * 3.2 * (0.25 + c / 3);
+      for (let r = 0; r < 2; r++) {
         ctx.fillStyle = (r + c) % 2 ? '#111' : '#fff';
-        ctx.fillRect(x + c * cell, y - 110 + r * (fh / 2), cell, fh / 2);
+        ctx.fillRect(x + c * cell, y - 108 + r * (fh / 2) + wave, cell + 0.5, fh / 2);
       }
     }
   }

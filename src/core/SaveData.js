@@ -1,9 +1,13 @@
-// localStorage-backed player profile: coins, vehicles, upgrades, level stars.
-// (Spec §7 asks for cloud sync — out of scope for a local build; the shape here
-// is a single serializable object so a sync layer can be added on top later.)
+// Player profile: coins, vehicles, upgrades, level stars.
+//
+// Reads and writes go through `platform.storage`, which is plain localStorage
+// on the web and Poki builds and the account-synced data module on CrazyGames.
+// The whole profile is one serializable object under one key, which is what
+// lets a portal back it with cloud storage without touching this file.
 
 import { VEHICLES, UPGRADE_STATS } from '../data/vehicles.js';
-import { getWorld } from '../data/levels.js';
+import { getWorld, WORLDS } from '../data/levels.js';
+import { platform } from './Platform.js';
 
 const KEY = 'hillrunner_save_v1';
 
@@ -30,6 +34,7 @@ function defaultSave() {
     stars: {},          // { "worldId-levelIndex": bestStars }
     bestTimes: {},      // { "worldId-levelIndex": seconds }
     lastLoginDay: null, // for daily bonus
+    muted: false,       // master mute (sound + music), toggled from home/pause
     upgradeHintShown: false, // one-time "upgrade your car" prompt
     infinite: {
       unlocked: {},     // { themeId: true } — Farm (1) is always unlocked
@@ -44,9 +49,12 @@ class SaveData {
     this.load();
   }
 
+  // Called once at import (so the test harnesses, which never boot a platform,
+  // still get a profile) and again from main.js once platform.init() has
+  // resolved — by then storage may point at a portal's cloud save.
   load() {
     try {
-      const raw = localStorage.getItem(KEY);
+      const raw = platform.storage.getItem(KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         // Merge over defaults so new vehicles/fields added later don't break old saves.
@@ -71,7 +79,7 @@ class SaveData {
 
   save() {
     try {
-      localStorage.setItem(KEY, JSON.stringify(this.data));
+      platform.storage.setItem(KEY, JSON.stringify(this.data));
     } catch (e) {
       console.warn('Save failed:', e);
     }
@@ -142,6 +150,18 @@ class SaveData {
     return this.getLevelStars(`${prev.id}-${prev.levels.length - 1}`) >= 1;
   }
 
+  // The level creator is the endgame reward: it unlocks once EVERY level of
+  // every playable world has at least one star.
+  isCreatorUnlocked() {
+    for (const w of WORLDS) {
+      if (!w.playable || w.levels.length === 0) continue;
+      for (let i = 0; i < w.levels.length; i++) {
+        if (this.getLevelStars(`${w.id}-${i}`) < 1) return false;
+      }
+    }
+    return true;
+  }
+
   // --- Infinite mode: coin-gated theme unlocks + best distance per theme ---
   isInfiniteUnlocked(themeId) {
     return themeId === 1 || !!this.data.infinite.unlocked[themeId];
@@ -164,6 +184,10 @@ class SaveData {
       this.save();
     }
   }
+
+  // --- Master mute (AudioBus reads this at boot; setUserMuted writes it) ---
+  isMuted() { return !!this.data.muted; }
+  setMuted(m) { this.data.muted = !!m; this.save(); }
 
   // --- One-time upgrade hint (shown when coins first cover an engine upgrade) ---
   isUpgradeHintShown() { return !!this.data.upgradeHintShown; }
