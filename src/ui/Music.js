@@ -9,7 +9,7 @@ import { isSilenced } from './AudioBus.js';
 
 const TRACKS = ['music/beat-1.mp3', 'music/beat-2.mp3', 'music/beat-3.mp3'];
 const FADE_S = 1.6;
-const VOLUME = 0.32;
+const VOLUME = 0.62;
 
 class Music {
   constructor() {

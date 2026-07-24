@@ -2391,3 +2391,11 @@ export function getLevel(worldId, levelIndex) {
 export function levelKey(worldId, levelIndex) {
   return `${worldId}-${levelIndex}`;
 }
+
+// The very last level of the campaign (final level of the final playable
+// world). Beating it is what unlocks Infinite mode.
+export function isFinalCampaignLevel(worldId, levelIndex) {
+  const playable = WORLDS.filter(w => w.playable && w.levels.length);
+  const last = playable[playable.length - 1];
+  return !!last && worldId === last.id && levelIndex === last.levels.length - 1;
+}

@@ -14,7 +14,7 @@ const FILES = [
 
 // Fractional edge inset cropped off when baking — hides baked-in watermarks
 // and non-seamless borders on some of the source tiles.
-const CROP = { underground: 0.09, stone: 0.09, grass: 0.05, mud: 0.04, leaves: 0.03 };
+const CROP = { underground: 0.001, stone: 0.001, grass: 0.001, mud: 0.001, leaves: 0.001 };
 
 const images = {};
 const cache = new Map();

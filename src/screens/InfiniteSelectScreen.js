@@ -15,7 +15,7 @@ export class InfiniteSelectScreen {
     const s = el('div', { class: 'screen' });
 
     const bar = el('div', { class: 'topbar' });
-    bar.appendChild(el('button', { class: 'btn small', text: '← Home', onclick: () => screens.show('home') }));
+    bar.appendChild(el('button', { class: 'btn small', text: '← Worlds', onclick: () => screens.show('worldselect') }));
     bar.appendChild(el('h2', { text: 'Infinite' }));
     bar.appendChild(el('div', { class: 'coins', text: `🪙 ${saveData.getCoins()}` }));
     s.appendChild(bar);

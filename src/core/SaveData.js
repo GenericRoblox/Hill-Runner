@@ -36,6 +36,10 @@ function defaultSave() {
     lastLoginDay: null, // for daily bonus
     muted: false,       // master mute (sound + music), toggled from home/pause
     upgradeHintShown: false, // one-time "upgrade your car" prompt
+    // One-time "new mode" reveal cutscenes (Worlds menu). Sticky once the
+    // player has watched the unlock play out, so it never replays.
+    infiniteSeen: false, // Infinite mode reveal shown
+    creatorSeen: false,  // Created Levels reveal shown
     infinite: {
       unlocked: {},     // { themeId: true } — Farm (1) is always unlocked
       best: {},         // { themeId: best distance in meters }
@@ -150,17 +154,29 @@ class SaveData {
     return this.getLevelStars(`${prev.id}-${prev.levels.length - 1}`) >= 1;
   }
 
-  // The level creator is the endgame reward: it unlocks once EVERY level of
-  // every playable world has at least one star.
-  isCreatorUnlocked() {
+  // True when EVERY level of every playable world has at least `min` stars.
+  everyLevelHasStars(min) {
     for (const w of WORLDS) {
       if (!w.playable || w.levels.length === 0) continue;
       for (let i = 0; i < w.levels.length; i++) {
-        if (this.getLevelStars(`${w.id}-${i}`) < 1) return false;
+        if (this.getLevelStars(`${w.id}-${i}`) < min) return false;
       }
     }
     return true;
   }
+
+  // Infinite mode is the first endgame reward: it unlocks once all worlds are
+  // completed (every level starred — which beating the final level guarantees).
+  isInfiniteModeUnlocked() { return this.everyLevelHasStars(1); }
+
+  // The level creator is the deeper reward: three stars on EVERY level.
+  isCreatorUnlocked() { return this.everyLevelHasStars(3); }
+
+  // --- One-time reveal cutscenes (Worlds menu) ---
+  isInfiniteSeen() { return !!this.data.infiniteSeen; }
+  markInfiniteSeen() { this.data.infiniteSeen = true; this.save(); }
+  isCreatorSeen() { return !!this.data.creatorSeen; }
+  markCreatorSeen() { this.data.creatorSeen = true; this.save(); }
 
   // --- Infinite mode: coin-gated theme unlocks + best distance per theme ---
   isInfiniteUnlocked(themeId) {

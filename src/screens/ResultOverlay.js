@@ -104,16 +104,24 @@ export function showResult(r) {
     }
     if (r.onGarage) {
       // One-time upgrade nudge (GameScreen sets onGarage the first time the
-      // player can afford an engine upgrade).
-      p.appendChild(el('div', {
-        class: 'upgrade-hint',
-        text: '💡 As the levels get harder, you may need to upgrade your car!',
+      // player can afford an engine upgrade). Framed as its own "shop ticket"
+      // callout — a bigger button wrapped in text — so it reads as a reward and
+      // stands apart from the routine Next/Retry/Level Select blocks below.
+      const nudge = el('div', { class: 'garage-nudge' });
+      nudge.appendChild(el('div', {
+        class: 'nudge-eyebrow',
+        text: 'You can afford your first upgrade!',
       }));
-      p.appendChild(el('button', {
-        class: 'btn primary',
+      nudge.appendChild(el('button', {
+        class: 'btn primary nudge-btn',
         text: '🔧 Go to Garage',
         onclick: () => { hideResult(); r.onGarage(); },
       }));
+      nudge.appendChild(el('div', {
+        class: 'nudge-sub',
+        text: 'The hills get steeper from here — a bigger engine helps you climb.',
+      }));
+      p.appendChild(nudge);
     }
     if (r.onNext) {
       p.appendChild(el('button', { class: 'btn primary', text: 'Next Level ▶', onclick: () => { hideResult(); r.onNext(); } }));
@@ -121,14 +129,22 @@ export function showResult(r) {
     if (r.onNextWorld) {
       p.appendChild(el('button', { class: 'btn blue', text: 'Next World ▶', onclick: () => { hideResult(); r.onNextWorld(); } }));
     }
-    p.appendChild(el('button', { class: 'btn', text: 'Retry', onclick: () => { hideResult(); r.onRetry(); } }));
+    // The final-level mode-unlock win hides Retry — the one move is forward,
+    // into the reveal (see the unlock-styled quit button below).
+    if (!r.hideRetry) {
+      p.appendChild(el('button', { class: 'btn', text: 'Retry', onclick: () => { hideResult(); r.onRetry(); } }));
+    }
   } else {
     p.appendChild(el('h2', { text: 'Wrecked!' }));
     p.appendChild(el('div', { class: 'fail-reason', text: r.reason }));
     p.appendChild(el('button', { class: 'btn primary', text: 'Retry (R)', onclick: () => { hideResult(); r.onRetry(); } }));
   }
 
-  p.appendChild(el('button', { class: 'btn', text: r.quitLabel || 'Level Select', onclick: () => { hideResult(); r.onQuit(); } }));
+  p.appendChild(el('button', {
+    class: r.unlockMode ? 'btn primary unlock' : 'btn',
+    text: r.quitLabel || 'Level Select',
+    onclick: () => { hideResult(); r.onQuit(); },
+  }));
   overlay().classList.remove('hidden');
   if (r.won) burstConfetti();
 }

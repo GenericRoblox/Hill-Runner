@@ -6,6 +6,7 @@ import { ads } from '../core/Breaks.js';
 import { getWorld, levelKey } from '../data/levels.js';
 import { VEHICLES } from '../data/vehicles.js';
 import { formatTime } from '../ui/HUD.js';
+import { WorldScene } from '../ui/MenuScenes.js';
 
 export class LevelSelectScreen {
   constructor(root) { this.root = root; }
@@ -14,13 +15,21 @@ export class LevelSelectScreen {
     this.worldId = worldId;
     const world = getWorld(worldId);
     this.root.innerHTML = '';
-    const s = el('div', { class: 'screen' });
+    const s = el('div', { class: 'screen level-select' });
+
+    // Themed, animated scenery behind the cards: a real level slice rendered
+    // with the game's textures + obstacle art (fixed, full-bleed). Content sits
+    // in its own relatively-positioned layer so it always paints above it.
+    this.scene?.destroy();
+    this.scene = new WorldScene(world);
+    s.appendChild(this.scene.el);
+    const content = el('div', { class: 'screen-content' });
 
     const bar = el('div', { class: 'topbar' });
     bar.appendChild(el('button', { class: 'btn small', text: '← Worlds', onclick: () => screens.show('worldselect') }));
     bar.appendChild(el('h2', { text: `${world.icon} ${world.name}` }));
     bar.appendChild(el('div', { class: 'coins', text: `🪙 ${saveData.getCoins()}` }));
-    s.appendChild(bar);
+    content.appendChild(bar);
 
     const grid = el('div', { class: 'grid' });
     world.levels.forEach((level, i) => {
@@ -40,7 +49,8 @@ export class LevelSelectScreen {
       }
       grid.appendChild(card);
     });
-    s.appendChild(grid);
+    content.appendChild(grid);
+    s.appendChild(content);
     this.root.appendChild(s);
   }
 
@@ -88,7 +98,13 @@ export class LevelSelectScreen {
     document.body.appendChild(overlay);
   }
 
+  update(dt) {
+    this.scene?.update(dt);
+  }
+
   exit() {
+    this.scene?.destroy();
+    this.scene = null;
     document.querySelectorAll('body > .overlay:not(#pause-overlay):not(#result-overlay)').forEach(n => n.remove());
   }
 }

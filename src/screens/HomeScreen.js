@@ -2,6 +2,18 @@ import { el, screens } from '../core/ScreenManager.js';
 import { saveData } from '../core/SaveData.js';
 import { setUserMuted, isUserMuted } from '../ui/AudioBus.js';
 
+// A large home action: a big toy-block button with an icon badge, a title and
+// a one-line subtitle, so the two front-door choices read at a glance.
+function bigButton(variant, icon, title, sub, onclick) {
+  const btn = el('button', { class: `btn big ${variant}`.trim(), onclick });
+  btn.appendChild(el('span', { class: 'big-icon', text: icon }));
+  const label = el('span', { class: 'big-label' });
+  label.appendChild(el('span', { class: 'big-title', text: title }));
+  label.appendChild(el('span', { class: 'big-sub', text: sub }));
+  btn.appendChild(label);
+  return btn;
+}
+
 export class HomeScreen {
   constructor(root) { this.root = root; }
 
@@ -15,28 +27,16 @@ export class HomeScreen {
     col.appendChild(el('div', {
       class: 'coins',
       text: `🪙 ${saveData.getCoins()} coins`,
-      style: 'text-align:center; margin-bottom: 16px;',
+      style: 'text-align:center; margin-bottom: 22px;',
     }));
-    col.appendChild(el('button', {
-      class: 'btn primary', text: '▶ Play',
-      onclick: () => screens.show('worldselect'),
-    }));
-    col.appendChild(el('button', {
-      class: 'btn', text: '∞ Infinite',
-      onclick: () => screens.show('infinite'),
-    }));
-    col.appendChild(el('button', {
-      class: 'btn', text: '🔧 Garage',
-      onclick: () => screens.show('garage'),
-    }));
-    // Endgame reward: appears only once every level of every world is starred
-    // (the Worlds menu shows the locked version until then).
-    if (saveData.isCreatorUnlocked()) {
-      col.appendChild(el('button', {
-        class: 'btn concrete', text: '🛠️ Level Creator',
-        onclick: () => screens.show('customlevels'),
-      }));
-    }
+
+    // Two big front-door actions. Everything else (Infinite, Created Levels)
+    // now lives one layer in, inside the Worlds menu.
+    col.appendChild(bigButton('primary', '▶', 'Play', 'Worlds, levels & stars',
+      () => screens.show('worldselect')));
+    col.appendChild(bigButton('', '🔧', 'Garage', 'Buy & tune your rides',
+      () => screens.show('garage')));
+
     const muteLabel = () => (isUserMuted() ? '🔇 Sound: Off' : '🔊 Sound: On');
     const muteBtn = el('button', {
       class: 'btn small',

@@ -449,11 +449,39 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
 .panel .stat-line { color: var(--ink-soft); font-weight: 600; margin: 4px 0; }
 .panel .earn { color: var(--go-deep); font-size: 1.4rem; font-weight: 700; margin: 12px 0; }
 .panel .fail-reason { color: #a3221a; font-weight: 700; margin-bottom: 12px; }
-.panel .upgrade-hint {
+/* One-time garage nudge: a "shop ticket" pinned to the wood board the first
+   time the player can afford an engine upgrade. A larger amber button wrapped
+   in text (eyebrow above, payoff below), framed and set apart from the routine
+   Next/Retry/Level Select buttons that follow it. */
+.panel .garage-nudge {
+  margin: 20px 0 22px;
+  padding: 15px 16px 16px;
+  background: linear-gradient(var(--cream), #ffe7bd);
+  border: 3px solid var(--amber-deep);
+  border-radius: 18px;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.75),
+              0 4px 0 rgba(207, 125, 16, 0.28);
+}
+.panel .garage-nudge .nudge-eyebrow {
+  font-family: var(--display);
+  font-size: 1.2rem;
+  line-height: 1.15;
+  letter-spacing: 0.5px;
+  color: var(--amber-deep);
+  margin-bottom: 12px;
+}
+/* The hero of the callout — noticeably bigger than the routine buttons, and
+   its own margins are handled by the eyebrow/sub around it. */
+.panel .garage-nudge .nudge-btn {
+  margin: 0;
+  padding: 16px 22px;
+  font-size: 1.55rem;
+}
+.panel .garage-nudge .nudge-sub {
+  margin-top: 12px;
   color: var(--ink-soft);
-  font-weight: 700;
-  margin: 4px auto 10px;
-  max-width: 320px;
+  font-weight: 600;
+  font-size: 0.95rem;
   line-height: 1.35;
 }
 
@@ -642,6 +670,140 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
 
 .custom-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 
+/* ---------- Home: two big front-door actions ---------- */
+.btn.big {
+  display: flex; align-items: center; gap: 16px;
+  text-align: left;
+  padding: 18px 22px;
+  margin: 14px 0;
+  border-radius: 20px;
+  letter-spacing: 0;
+}
+.btn.big .big-icon {
+  font-size: 2.2rem; line-height: 1; flex: 0 0 auto;
+  filter: drop-shadow(0 3px 0 rgba(30, 18, 4, 0.25));
+}
+.btn.big .big-label { display: flex; flex-direction: column; gap: 2px; }
+.btn.big .big-title {
+  font-family: var(--display); font-size: 1.7rem; line-height: 1; letter-spacing: 1px;
+}
+.btn.big .big-sub {
+  font-size: 0.82rem; font-weight: 600; color: var(--ink-soft); letter-spacing: 0;
+}
+.btn.big.primary .big-sub { color: #7a4a08; }
+
+/* ---------- Section divider (Worlds → Extra Modes) ---------- */
+.section-head {
+  display: flex; align-items: center; gap: 14px;
+  margin: 32px 0 16px;
+  font-family: var(--display); font-size: 1.35rem; letter-spacing: 1px;
+  color: var(--cream); white-space: nowrap;
+  text-shadow:
+    -2px -2px 0 var(--ink), 2px -2px 0 var(--ink),
+    -2px 2px 0 var(--ink), 2px 2px 0 var(--ink),
+    0 4px 0 rgba(30, 18, 4, 0.35);
+}
+.section-head::before, .section-head::after {
+  content: ''; height: 4px; flex: 1;
+  background: rgba(67, 41, 15, 0.4); border-radius: 999px;
+}
+
+/* ---------- Themed level-select backdrops (MenuScenes.js) ---------- */
+/* The scene is a live <canvas> painted by WorldScene: a real level slice drawn
+   with the game's terrain textures + obstacle renderer. Content rides above it
+   in its own layer. */
+.level-select .screen-content { position: relative; z-index: 1; }
+.world-scene {
+  position: fixed; inset: 0; z-index: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+}
+/* The default grass backdrop would show through a themed scene - hide it. */
+#menu-root:has(.world-scene)::before,
+#menu-root:has(.world-scene)::after { display: none; }
+
+/* Extra Modes cards: only two, so make them larger and centred rather than
+   stranded small at the left of the auto-fill worlds grid. */
+.grid.extras {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 22px;
+}
+.grid.extras > .card {
+  flex: 0 1 320px; max-width: 340px;
+  padding: 24px 22px 26px;
+  text-align: center;
+}
+.grid.extras > .card .icon { font-size: 3rem; margin-bottom: 12px; }
+.grid.extras > .card h3 { font-size: 1.5rem; }
+.grid.extras > .card .sub { font-size: 0.95rem; line-height: 1.4; }
+
+/* ---------- New-mode reveal cutscene (Cutscene.js) ---------- */
+.overlay.cutscene {
+  z-index: 120; opacity: 0; transition: opacity 0.3s;
+  background: radial-gradient(circle at 50% 38%, rgba(48,36,84,0.6), rgba(10,14,26,0.88));
+}
+.overlay.cutscene.in { opacity: 1; }
+.overlay.cutscene.closing { opacity: 0; }
+.cutscene-stage {
+  text-align: center; max-width: min(580px, 92vw);
+  transform: translateY(16px) scale(0.96);
+  transition: transform 0.42s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+.overlay.cutscene.in .cutscene-stage { transform: none; }
+.cutscene-eyebrow {
+  color: var(--amber-hi); font-weight: 800; letter-spacing: 0.5px; margin-bottom: 8px;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+}
+.cutscene-title {
+  font-family: var(--display); font-size: clamp(2rem, 7vw, 3.2rem);
+  color: var(--cream); letter-spacing: 2px; margin-bottom: 26px;
+  text-shadow:
+    -3px -3px 0 var(--ink), 3px -3px 0 var(--ink),
+    -3px 3px 0 var(--ink), 3px 3px 0 var(--ink),
+    0 8px 0 rgba(30, 18, 4, 0.5);
+}
+.cutscene-modes { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin-bottom: 28px; }
+.reveal-tile {
+  width: 214px; max-width: 42vw;
+  background: rgba(255, 246, 227, 0.96); border: 4px solid var(--ink); border-radius: 20px;
+  padding: 18px 16px 16px;
+  box-shadow: 0 8px 0 var(--board-edge), 0 16px 30px rgba(10, 25, 40, 0.4);
+}
+.reveal-art { position: relative; height: 76px; margin-bottom: 8px; }
+.reveal-lock, .reveal-icon {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  font-size: 3.4rem; line-height: 1;
+}
+.reveal-icon { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(-25deg); }
+.reveal-art.shattered .reveal-lock  { animation: ws-shatter 0.5s ease-in forwards; }
+.reveal-art.shattered .reveal-icon  { animation: ws-pop-icon 0.55s cubic-bezier(0.2, 1.7, 0.4, 1) 0.28s forwards; }
+@keyframes ws-shatter {
+  0%   { transform: translate(-50%, -50%) rotate(0); }
+  25%  { transform: translate(-52%, -50%) rotate(-9deg); }
+  50%  { transform: translate(-48%, -50%) rotate(9deg); }
+  100% { transform: translate(-50%, -96%) scale(1.4) rotate(22deg); opacity: 0; }
+}
+@keyframes ws-pop-icon {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.2) rotate(-25deg); }
+  100% { opacity: 1; transform: translate(-50%, -50%) scale(1) rotate(0); }
+}
+.reveal-name { font-family: var(--display); font-size: 1.5rem; letter-spacing: 1px; color: var(--ink); }
+.reveal-desc { color: var(--ink-soft); font-weight: 600; font-size: 0.85rem; margin-top: 4px; line-height: 1.3; }
+.cutscene-go { min-width: 210px; margin: 0 auto; }
+
+/* Emphasis on the final-level "Unlock New Mode" exit button */
+.panel .btn.primary.unlock {
+  font-size: 1.4rem; padding: 15px 20px;
+  animation: unlock-pulse 1.7s ease-in-out infinite;
+}
+@keyframes unlock-pulse {
+  0%, 100% { box-shadow: 0 5px 0 var(--amber-deep), 0 9px 14px rgba(20, 40, 60, 0.25); }
+  50%      { box-shadow: 0 5px 0 var(--amber-deep), 0 0 0 4px rgba(255, 214, 90, 0.55), 0 9px 22px rgba(255, 180, 40, 0.45); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
+  /* Animations are the reveal, so pin the end states when motion is off. */
+  .overlay.cutscene, .overlay.cutscene .cutscene-stage { opacity: 1; transform: none; }
+  .reveal-art.shattered .reveal-lock { display: none; }
+  .reveal-art.shattered .reveal-icon { opacity: 1; transform: translate(-50%, -50%); }
 }

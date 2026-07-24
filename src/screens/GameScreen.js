@@ -18,7 +18,7 @@ import { screens } from '../core/ScreenManager.js';
 import { saveData } from '../core/SaveData.js';
 import { platform } from '../core/Platform.js';
 import { ads } from '../core/Breaks.js';
-import { getWorld, getLevel, levelKey } from '../data/levels.js';
+import { getWorld, getLevel, levelKey, isFinalCampaignLevel } from '../data/levels.js';
 
 const DEBUG_HUD = new URLSearchParams(location.search).has('debug');
 import { getVehicleDef, getStatsAtTiers, getUpgradeCost } from '../data/vehicles.js';
@@ -340,6 +340,30 @@ export class GameScreen {
     sound.updateEngine(0, false);
     ads.noteLevelWon(); // only wins march the player toward an ad break
     if (stars === 3) platform.happytime(); // portals use this to gauge a good moment
+
+    // Beating the final campaign level unlocks the endgame modes. The first
+    // time it earns something new, the win screen drops Retry and turns the
+    // exit into "Unlock New Mode" — which routes to the Worlds menu, where the
+    // reveal cutscene plays (WorldSelectScreen detects the unseen unlock).
+    if (isFinalCampaignLevel(this.worldId, this.levelIndex)) {
+      const newInfinite = saveData.isInfiniteModeUnlocked() && !saveData.isInfiniteSeen();
+      const newCreator = saveData.isCreatorUnlocked() && !saveData.isCreatorSeen();
+      if (newInfinite || newCreator) {
+        showResult({
+          won: true,
+          stars,
+          time: this.time,
+          bestTime: saveData.getBestTime(this.key),
+          airTime: this.car.airTime,
+          coins,
+          hideRetry: true,
+          unlockMode: true,
+          quitLabel: '🔓 Unlock New Mode',
+          onQuit: () => this.quit('worldselect'),
+        });
+        return;
+      }
+    }
 
     // One-time nudge: the first time the player can afford the pickup's
     // first engine upgrade, point them at the garage.

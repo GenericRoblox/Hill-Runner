@@ -43,8 +43,8 @@ export const VEHICLES = {
     airControl: 1.2,
     tiers: {
       engine: [
-        { name: '2.0L I4',       torque: 0.55, topSpeed: 45, cost: 0 },
-        { name: '2.5L I4',       torque: 0.75, topSpeed: 60, cost: 1000 },
+        { name: '2.0L I4',       torque: 0.60, topSpeed: 60, cost: 0 },
+        { name: '2.5L I4',       torque: 0.85, topSpeed: 70, cost: 1000 },
         { name: '2.5L V6',       torque: 1.0, topSpeed: 85, cost: 3000 },
         { name: '3.5L V6 Turbo', torque: 1.2, topSpeed: 100, cost: 7500 },
       ],
@@ -77,17 +77,17 @@ export const VEHICLES = {
     price: 16000,
     // sports_car-sprite.png is 800x319.
     body: {
-      width: 135, height: 50, wheelRadius: 15, wheelBase: 75, density: 0.0032,
-      sprite: 'sprites/sports_car-sprite.png', wheelY: 10, comY: 15,
+      width: 145, height: 50, wheelRadius: 15, wheelBase: 85, density: 0.0032,
+      sprite: 'sprites/sports_car-sprite.png', wheelY: 14, comY: 15,
       wheelSprite: 'sprites/wheel-sprites/sports_car-wheel.png',
     },
     airControl: 0.6,
     tiers: {
       engine: [
-        { name: '2.5L Flat-4',   torque: 0.70, topSpeed: 42, cost: 0 },
-        { name: '3.0L V6',       torque: 0.90, topSpeed: 48, cost: 1100 },
-        { name: '4.0L V8',       torque: 1.12, topSpeed: 55, cost: 3200 },
-        { name: '4.0L V8 Turbo', torque: 1.60, topSpeed: 64, cost: 8000 },
+        { name: '2.5L Flat-4',   torque: 0.70, topSpeed: 50, cost: 0 },
+        { name: '3.0L V6',       torque: 0.90, topSpeed: 60, cost: 1100 },
+        { name: '4.0L V8',       torque: 1.12, topSpeed: 75, cost: 3200 },
+        { name: '4.0L V8 Turbo', torque: 1.60, topSpeed: 95, cost: 8000 },
       ],
       suspension: [
         { name: 'Stock Coils',    stiffness: 0.055, damping: 0.09, travel: 0.90, cost: 0 },
