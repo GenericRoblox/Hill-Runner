@@ -125,10 +125,10 @@ export const VEHICLES = {
     airControl: 3.6,
     tiers: {
       engine: [
-        { name: '250cc Single',  torque: 0.50, topSpeed: 40, cost: 0 },
-        { name: '450cc Single',  torque: 0.68, topSpeed: 50, cost: 900 },
-        { name: '600cc Twin',    torque: 0.88, topSpeed: 65, cost: 2800 },
-        { name: '1000cc Four',   torque: 1.25, topSpeed: 80, cost: 6800 },
+        { name: '250cc Single',  torque: 0.50, topSpeed: 25, cost: 0 },
+        { name: '450cc Single',  torque: 0.68, topSpeed: 30, cost: 900 },
+        { name: '600cc Twin',    torque: 0.88, topSpeed: 45, cost: 2800 },
+        { name: '1000cc Four',   torque: 1.00, topSpeed: 60, cost: 6800 },
       ],
       suspension: [
         { name: 'Stock Forks',    stiffness: 0.010, damping: 0.08, travel: 0.30, cost: 0 },

@@ -12,9 +12,8 @@ const FILES = [
   'brick', 'pavement', 'concrete', 'leaves', 'underground', 'liquid',
 ];
 
-// Fractional edge inset cropped off when baking — hides baked-in watermarks
-// and non-seamless borders on some of the source tiles.
-const CROP = { underground: 0.001, stone: 0.001, grass: 0.001, mud: 0.001, leaves: 0.001 };
+// Source file extension per tile (default jpg); stone ships as a png.
+const EXT = { stone: 'png' };
 
 const images = {};
 const cache = new Map();
@@ -22,7 +21,7 @@ const cache = new Map();
 export function loadTextures() {
   for (const name of FILES) {
     const img = new Image();
-    img.src = `textures/${name}-texture.jpg`;
+    img.src = `textures/${name}-texture.${EXT[name] || 'jpg'}`;
     images[name] = img;
   }
 }
@@ -37,14 +36,11 @@ function bakeTile(name, tint, size, desat) {
   if (!img || !img.complete || !img.naturalWidth) return null;
   const key = `${name}|${tint}|${size}|${desat}`;
   if (!tiles.has(key)) {
-    const crop = CROP[name] || 0;
-    const sx = img.naturalWidth * crop, sy = img.naturalHeight * crop;
-    const sw = img.naturalWidth - sx * 2, sh = img.naturalHeight - sy * 2;
     const c = document.createElement('canvas');
     c.width = size;
-    c.height = Math.max(1, Math.round(sh * (size / sw)));
+    c.height = Math.max(1, Math.round(img.naturalHeight * (size / img.naturalWidth)));
     const g = c.getContext('2d');
-    g.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    g.drawImage(img, 0, 0, c.width, c.height);
     if (tint) {
       if (desat) {
         g.globalCompositeOperation = 'saturation';
