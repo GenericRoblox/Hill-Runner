@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Hill Runner jump calibration</title></head>
+<body>
+<pre id="out">running...</pre>
+<script src="lib/matter.min.js"></script>
+<script type="module">
+// Jump calibration. Drives the REAL section helpers (jumpEdge / jumpGap /
+// jumpRamp) over a sweep of pit widths, for every vehicle at every upgrade
+// tier, and reports the widest pit each combination clears plus what the
+// failures actually were.
+//
+// This is what produced the table in CLAUDE.md, and it is the only honest way
+// to size a gap: the ballistic maths does NOT predict this physics. A launch
+// lip pitches the car nose-up, which eats the carry, so a very fast car can
+// fall SHORT of a pit a slower one clears — which is why the pickup's lip
+// ceiling is ~300px at every tier while its ramp ceiling doubles with upgrades.
+//
+// Rerun after touching gravity, DRIVE_FORCE, the vehicle stat tables, or the
+// jump sections themselves, and update the CLAUDE.md table with the results.
+//
+// The approach here is deliberately REALISTIC (rolling ground into the
+// section, not a long clean flat): a calibration run off a perfect run-up
+// reports numbers a real level can never reach.
+const lines = [];
+const log = m => { lines.push(m); document.getElementById('out').textContent = lines.join('\n'); };
+window.onerror = (m, s, l) => log(`WINDOW ERROR: ${m} @ ${s}:${l}`);
+
+try {
+  const { PhysicsWorld } = await import('./src/physics/PhysicsWorld.js');
+  const { Terrain } = await import('./src/physics/Terrain.js');
+  const { Obstacles } = await import('./src/physics/Obstacles.js');
+  const { Car } = await import('./src/physics/Car.js');
+  const L = await import('./src/data/levels.js');
+  const { getStatsAtTiers } = await import('./src/data/vehicles.js');
+  const { TIERS } = await import('./test-simbot.js');
+
+  function build(kind, w) {
+    const b = new L.LevelBuilder(0, 600);
+    b.flat(420);
+    b.waves(3, 470, 88);
+    if (kind === 'lip') L.__jumpGap(b, w);
+    else if (kind === 'edge') L.__jumpEdge(b, w);
+    else L.__jumpRamp(b, w);
+    b.waves(2, 470, 80);
+    b.flat(500);
+    // friction MUST be set: an omitted key falls through to Matter's 0.1
+    // default, i.e. the whole calibration silently runs on ice.
+    return b.finish({ name: 'cal', targetTime: 99, basePayout: 1, friction: 0.85 });
+  }
+
+  function run(kind, w, veh, up) {
+    const level = build(kind, w);
+    const pw = new PhysicsWorld();
+    const terrain = new Terrain(level, pw);
+    const obs = new Obstacles(level, pw);
+    const car = new Car(getStatsAtTiers(veh, up), level.startX, level.startY);
+    car.addTo(pw);
+    let res = 'TIMEOUT', stall = 0, rev = -1;
+    for (let i = 0; i < 60 * 90; i++) {
+      const t = i / 60, now = pw.timestamp();
+      const g = car.groundedWheelCount(now) > 0, a = car.normAngle();
+      let inp = { gas: false, brake: false };
+      if (t < rev) inp.brake = true;
+      else if (!g) { inp.gas = a > 0.22; inp.brake = a < -0.22; }
+      else {
+        inp.gas = true;
+        if (car.speed() < 0.6) { stall += 1 / 60; if (stall > 1.2) { rev = t + 1.4; stall = 0; } }
+        else stall = 0;
+      }
+      const v = car.update(inp, 1 / 60, now);
+      pw.step(1000 / 60);
+      if (v) { res = v.toUpperCase(); break; }
+      if (car.position().y > level.deathY) { res = 'FELL'; break; }
+      if (car.position().x > level.finishX) { res = 'WIN'; break; }
+    }
+    car.removeFrom(pw); obs.destroy(); terrain.destroy(); pw.destroy();
+    return res;
+  }
+
+  for (const veh of ['pickup', 'sports', 'bike']) {
+    for (const kind of ['edge', 'lip', 'ramp']) {
+      for (const tier of Object.keys(TIERS)) {
+        const fails = [];
+        let maxPass = 0;
+        for (let w = 200; w <= 800; w += 50) {
+          const r = run(kind, w, veh, TIERS[tier]);
+          if (r === 'WIN') maxPass = w; else fails.push(w + '=' + r);
+        }
+        log(`${veh} ${kind} ${tier}: maxPass=${maxPass} fails: ${fails.join(' ') || 'none'}`);
+      }
+    }
+  }
+  log('DONE');
+} catch (e) {
+  log('FATAL: ' + e.message + '\n' + e.stack);
+}
+</script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 import { el, screens } from '../core/ScreenManager.js';
 import { saveData } from '../core/SaveData.js';
 import { setUserMuted, isUserMuted } from '../ui/AudioBus.js';
+import { platform } from '../core/Platform.js';
 
 // A large home action: a big toy-block button with an icon badge, a title and
 // a one-line subtitle, so the two front-door choices read at a glance.
@@ -47,7 +48,10 @@ export class HomeScreen {
         muteBtn.textContent = muteLabel();
       },
     });
-    col.appendChild(muteBtn);
+    // Portals with their own audio control own it outright (CrazyGames' setting
+    // explicitly outranks in-game toggles), so offering a second switch there
+    // just gives the player two that disagree.
+    if (!platform.portalAudioControl) col.appendChild(muteBtn);
     s.appendChild(col);
 
     s.appendChild(el('p', {

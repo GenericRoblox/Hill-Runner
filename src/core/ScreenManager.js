@@ -72,3 +72,25 @@ export function showToast(msg, ms = 2500) {
   clearTimeout(t._timer);
   t._timer = setTimeout(() => t.classList.add('hidden'), ms);
 }
+
+// Roadside route marker naming the level you just dropped into. It matters
+// most on a first launch, where the player lands mid-hillside with no menu
+// behind them and nothing else says where they are.
+//
+// It sits top-centre, below the HUD timer and well clear of the car (which
+// spawns lower-left), and it never takes a click: `pointer-events: none` means
+// the very first tap goes to the throttle. Removal is on a TIMER, not on
+// animationend — prefers-reduced-motion kills animations outright, and a card
+// waiting for an event that will never fire would sit there for the whole run.
+export function showLevelIntro({ icon, eyebrow, title }, ms = 2300) {
+  document.getElementById('level-intro')?.remove();
+  const card = el('div', { id: 'level-intro', class: 'level-intro' });
+  if (icon) card.appendChild(el('span', { class: 'li-shield', text: icon }));
+  const text = el('div', { class: 'li-text' });
+  text.appendChild(el('span', { class: 'li-eyebrow', text: eyebrow }));
+  text.appendChild(el('span', { class: 'li-title', text: title }));
+  card.appendChild(text);
+  document.body.appendChild(card);
+  setTimeout(() => card.classList.add('out'), ms - 400);
+  setTimeout(() => card.remove(), ms);
+}

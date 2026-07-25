@@ -544,96 +544,208 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
 .veh-opt.selected { border-color: var(--ink); background: var(--cream); box-shadow: 0 0 0 3px var(--amber); }
 .veh-opt .rec { color: var(--go-deep); font-size: 0.8rem; }
 
-/* ---------- Level editor overlay ---------- */
-/* The editor is a canvas screen; #editor-ui floats on top. The container
-   ignores the mouse so the canvas gets every click that isn't on a control. */
-#editor-ui { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+/* ---------- Level editor ---------- */
+/* Two strips and nothing else: actions on top, tools on the bottom, the level
+   itself in between and never covered. The strips are SLATE rather than the
+   menus' cream board — cream vanishes against the Farm's pale sky, and the
+   editor has to stay legible over all six worlds' backdrops. */
+#editor-ui {
+  position: fixed; inset: 0; pointer-events: none; z-index: 5;
+  --ed-slate: rgba(38, 32, 50, 0.93);
+  --ed-line: rgba(255, 246, 227, 0.16);
+  --ed-face: rgba(255, 246, 227, 0.1);
+  --ed-text: #f4ece0;
+}
 #editor-ui > * { pointer-events: auto; }
 #editor-ui .overlay { pointer-events: auto; }
 
-.ed-left {
-  position: absolute; left: 10px; top: 50%;
-  transform: translateY(-50%);
-  display: flex; flex-direction: column; gap: 7px;
+/* --- Top bar --- */
+.ed-top {
+  position: absolute; top: 0; left: 0; right: 0;
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  padding-left: max(10px, env(safe-area-inset-left));
+  padding-right: max(10px, env(safe-area-inset-right));
+  background: var(--ed-slate);
+  border-bottom: 2px solid var(--ed-line);
 }
-.ed-sep { height: 8px; pointer-events: none; }
-.ed-btn {
-  width: 66px; height: 56px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 1px;
+.ed-icon {
+  flex: none;
+  width: 42px; height: 42px;
+  display: grid; place-items: center;
+  font: inherit; font-size: 1.2rem; font-weight: 700;
+  color: var(--ed-text);
+  background: var(--ed-face);
+  border: 2px solid var(--ed-line);
+  border-radius: 11px;
+  cursor: pointer;
+}
+.ed-icon.tiny { width: 30px; height: 30px; font-size: 0.9rem; }
+.ed-icon:hover:not(:disabled) { background: rgba(255, 246, 227, 0.2); }
+.ed-icon:disabled { opacity: 0.32; cursor: default; }
+.ed-icon:active:not(:disabled) { transform: translateY(1px); }
+
+/* The level name doubles as the settings button — the thing you want to rename
+   is the thing you tap, rather than a gear that opens a panel with a name in it. */
+.ed-name {
+  flex: 1 1 auto; min-width: 0;
+  text-align: left;
+  padding: 0 12px; height: 42px;
+  font-family: 'Beachday', 'Fredoka', sans-serif;
+  font-size: 1.15rem; letter-spacing: 0.4px;
+  color: var(--ed-text);
+  background: none; border: none; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ed-name:hover { text-decoration: underline dotted; text-underline-offset: 4px; }
+
+.ed-veh {
+  flex: none;
+  width: 62px; height: 42px;
+  display: grid; place-items: center;
+  background: var(--ed-face);
+  border: 2px solid var(--ed-line);
+  border-radius: 11px; cursor: pointer;
+  padding: 0 4px;
+}
+.ed-veh img { width: 100%; height: auto; max-height: 30px; object-fit: contain; }
+.ed-veh:hover { background: rgba(255, 246, 227, 0.2); }
+
+/* Exactly one green control in the whole editor. Test is the thing you do
+   every thirty seconds; everything else is occasional. */
+.ed-play {
+  flex: none;
+  display: flex; align-items: center; gap: 7px;
+  height: 42px; padding: 0 16px;
+  font: inherit; font-size: 1rem; font-weight: 700;
+  color: var(--ink);
+  background: var(--go, #8ddc6d);
+  border: 2px solid var(--ink);
+  border-radius: 11px;
+  box-shadow: 0 3px 0 var(--go-deep, #4e9c37);
+  cursor: pointer;
+}
+.ed-play:active { transform: translateY(3px); box-shadow: none; }
+
+/* --- Bottom tray --- */
+.ed-tray {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: var(--ed-slate);
+  border-top: 2px solid var(--ed-line);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.ed-tabs {
+  display: flex; align-items: stretch; gap: 6px;
+  padding: 7px 10px 0;
+  padding-left: max(10px, env(safe-area-inset-left));
+  padding-right: max(10px, env(safe-area-inset-right));
+}
+.ed-tabs-gap { flex: 1 1 auto; }
+.ed-tab {
+  display: flex; align-items: center; gap: 6px;
+  padding: 7px 13px;
+  font: inherit; font-size: 0.82rem; font-weight: 700;
+  color: var(--ed-text);
+  background: var(--ed-face);
+  border: 2px solid var(--ed-line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.ed-tab .ic { font-size: 1rem; line-height: 1; }
+.ed-tab.active {
+  color: var(--ink);
+  background: var(--amber, #ffc65c);
+  border-color: var(--ink);
+}
+.ed-tab.pin.active { background: #ffd9a1; }
+
+/* The tool row scrolls; the held tool LIFTS out of it. Knowing what is in your
+   hand at a glance is the single biggest usability win here — the old editor
+   kept it in two hidden variables and a numbered slot. */
+.ed-row {
+  display: flex; gap: 7px;
+  padding: 9px 10px 10px;
+  padding-left: max(10px, env(safe-area-inset-left));
+  padding-right: max(10px, env(safe-area-inset-right));
+  overflow-x: auto; overflow-y: hidden;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+.ed-row-note {
+  padding: 14px 4px 18px;
+  font-size: 0.85rem; font-weight: 700; color: var(--ed-text); opacity: 0.85;
+}
+.ed-tool {
+  position: relative; flex: none;
+  width: 68px; min-height: 66px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  padding: 6px 3px;
+  font: inherit; color: var(--ed-text);
+  background: var(--ed-face);
+  border: 2px solid var(--ed-line);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.ed-tool .num {
+  position: absolute; top: 2px; left: 6px;
+  font-size: 0.6rem; font-weight: 700; opacity: 0.55;
+}
+.ed-tool .ic { font-size: 1.4rem; line-height: 1.1; }
+.ed-tool .icimg { width: 34px; height: 34px; object-fit: contain; pointer-events: none; }
+.ed-tool .nm {
+  font-size: 0.58rem; font-weight: 700; line-height: 1.1; text-align: center;
+  white-space: nowrap; overflow: hidden; max-width: 62px; text-overflow: ellipsis;
+}
+.ed-tool:hover { background: rgba(255, 246, 227, 0.18); }
+.ed-tool.held {
+  color: var(--ink);
   background: var(--cream);
-  border: 3px solid var(--ink);
-  border-radius: 12px;
-  box-shadow: 0 4px 0 var(--board-edge);
-  cursor: pointer;
-  color: var(--ink); font-family: inherit;
+  border-color: var(--ink);
+  box-shadow: 0 0 0 3px var(--amber), 0 6px 0 rgba(0, 0, 0, 0.25);
+  transform: translateY(-5px);
 }
-.ed-btn .ic { font-size: 1.15rem; line-height: 1.1; }
-.ed-btn .nm { font-size: 0.56rem; font-weight: 700; line-height: 1; }
-.ed-btn:hover { filter: brightness(1.06); }
-.ed-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--board-edge); }
-.ed-btn.active { background: var(--amber-hi); box-shadow: 0 0 0 3px var(--amber), 0 4px 0 var(--amber-deep); }
-.ed-btn.go { background: #c9f0bd; }
+.ed-tool.held .num { opacity: 0.5; }
+.ed-tool.all { background: rgba(141, 220, 109, 0.18); border-style: dashed; }
+.ed-tool.all .ic { font-size: 1.5rem; }
 
-.ed-hotbar {
-  position: absolute; top: 10px; left: 50%;
-  transform: translateX(-50%);
-  display: flex; gap: 5px; flex-wrap: wrap; justify-content: center;
-  max-width: calc(100vw - 190px);
-}
-.ed-slot {
-  position: relative;
-  width: 62px; height: 60px;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: rgba(255, 246, 227, 0.92);
-  border: 3px solid rgba(67, 41, 15, 0.45);
-  border-radius: 12px;
-  cursor: pointer;
-  color: var(--ink); font-family: inherit;
-  padding: 2px;
-}
-.ed-slot.selected { border-color: var(--ink); background: var(--cream); box-shadow: 0 0 0 3px var(--amber); }
-.ed-slot .num {
-  position: absolute; top: 1px; left: 5px;
-  font-size: 0.62rem; font-weight: 700; color: var(--ink-soft);
-}
-.ed-slot .ic { font-size: 1.25rem; line-height: 1.2; }
-.ed-slot .icimg { width: 32px; height: 32px; object-fit: contain; pointer-events: none; }
-.ed-slot .nm {
-  font-size: 0.5rem; font-weight: 700; line-height: 1.1;
-  text-align: center; white-space: nowrap; overflow: hidden;
-  max-width: 56px; text-overflow: ellipsis;
-}
-.ed-slot.more { background: rgba(200, 240, 189, 0.92); }
-
+/* --- Parameter panel --- */
 .ed-params {
-  position: absolute; right: 10px; top: 84px;
-  width: 258px;
-  background: var(--cream);
-  border: 3px solid var(--ink);
+  position: absolute; right: 12px; bottom: 152px;
+  width: 264px;
+  background: var(--ed-slate);
+  border: 2px solid var(--ed-line);
   border-radius: 14px;
-  box-shadow: 0 5px 0 var(--board-edge);
   padding: 12px 14px;
+  color: var(--ed-text);
 }
 .ed-params.hidden { display: none; }
-.ed-params h3 { font-size: 1.05rem; margin-bottom: 8px; }
-.ed-param { margin: 7px 0; font-size: 0.8rem; font-weight: 700; }
-.ed-param label { display: block; color: var(--ink-soft); margin-bottom: 2px; }
-.ed-param input[type="range"] { width: 178px; vertical-align: middle; }
-.ed-param .val { display: inline-block; width: 52px; text-align: right; }
-.ed-param-actions { display: flex; gap: 8px; margin-top: 10px; justify-content: flex-end; }
+.ed-params-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ed-params h3 { font-size: 1rem; margin: 0 0 2px; color: var(--ed-text); }
+.ed-param { margin: 9px 0; font-size: 0.78rem; font-weight: 700; }
+.ed-param label { display: block; opacity: 0.75; margin-bottom: 3px; }
+.ed-param input[type="range"] { width: 176px; vertical-align: middle; accent-color: var(--amber); }
+.ed-param .val {
+  display: inline-block; width: 50px; text-align: right;
+  font-variant-numeric: tabular-nums; /* the readout must not jitter while dragging */
+}
+.ed-params .btn { width: 100%; margin-top: 10px; }
+.btn.danger { background: #f0b3ac; }
 
+/* --- Hint line --- */
 .ed-hint {
-  position: absolute; bottom: 8px; left: 50%;
+  position: absolute; left: 50%; bottom: 150px;
   transform: translateX(-50%);
-  background: rgba(255, 246, 227, 0.75);
-  border-radius: 12px;
+  max-width: min(560px, calc(100vw - 320px));
   padding: 5px 14px;
-  font-size: 0.72rem; font-weight: 700; color: var(--ink-soft);
-  white-space: nowrap; max-width: calc(100vw - 40px);
-  overflow: hidden; text-overflow: ellipsis;
+  background: rgba(38, 32, 50, 0.8);
+  border-radius: 999px;
+  font-size: 0.74rem; font-weight: 700; color: var(--ed-text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  pointer-events: none;
 }
 
+/* --- Modals --- */
 .ed-modal { max-height: 82vh; overflow-y: auto; max-width: min(720px, 94vw); }
 .ed-cat {
   display: grid;
@@ -642,6 +754,7 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
   margin: 12px 0;
   max-height: 56vh; overflow-y: auto;
 }
+.ed-cat.veh { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .ed-cat-item {
   display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding: 10px 6px;
@@ -655,7 +768,9 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
 .ed-cat-item.selected { box-shadow: 0 0 0 3px var(--amber); border-color: var(--ink); }
 .ed-cat-item .ic { font-size: 1.6rem; }
 .ed-cat-item .icimg { width: 46px; height: 46px; object-fit: contain; pointer-events: none; }
+.ed-cat-item .veh-thumb { width: 100%; max-width: 118px; height: auto; object-fit: contain; }
 .ed-cat-item .nm { font-size: 0.68rem; }
+.ed-cat-item .sub { font-size: 0.6rem; opacity: 0.7; }
 
 .ed-field { margin: 10px 0; text-align: left; }
 .ed-field label { display: block; font-size: 0.8rem; font-weight: 700; color: var(--ink-soft); margin-bottom: 3px; }
@@ -667,6 +782,49 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
   border: 3px solid rgba(67, 41, 15, 0.45);
   border-radius: 10px;
 }
+
+/* --- Phone: the tray keeps its full height (thumbs need the targets), the
+   chrome around it gets out of the way, and the params panel docks across the
+   bottom instead of floating over the level. --- */
+@media (max-width: 720px) {
+  .ed-name { font-size: 1rem; padding: 0 6px; }
+  .ed-play { padding: 0 12px; }
+  .ed-play .lbl { display: none; }
+  .ed-veh { width: 52px; }
+  .ed-tab .lbl { display: none; }
+  .ed-tab { padding: 8px 12px; }
+  .ed-tab .ic { font-size: 1.15rem; }
+  /* The hint stays on phones — there is no tooltip and no keyboard there, so
+     it is the only place the current tool explains itself. It steps aside for
+     the parameter panel, which needs the room more. */
+  .ed-hint {
+    left: 8px; right: 8px; transform: none;
+    max-width: none; text-align: center;
+    bottom: calc(154px + env(safe-area-inset-bottom, 0px));
+  }
+  #editor-ui:has(.ed-params:not(.hidden)) .ed-hint { display: none; }
+  .ed-params {
+    right: 8px; left: 8px; width: auto;
+    bottom: calc(148px + env(safe-area-inset-bottom, 0px));
+  }
+  .ed-param input[type="range"] { width: calc(100% - 62px); }
+}
+/* Very narrow phones: shrink the fixed-size controls rather than let the top
+   bar overflow, and let the level name give up all of its width. */
+@media (max-width: 430px) {
+  .ed-top { gap: 5px; }
+  .ed-icon { width: 38px; height: 38px; font-size: 1.05rem; }
+  .ed-name { flex: 1 1 0; padding: 0 2px; font-size: 0.92rem; }
+  .ed-veh { width: 46px; height: 38px; }
+  .ed-play { height: 38px; padding: 0 11px; }
+  .ed-tab { padding: 7px 10px; }
+}
+@media (max-height: 460px) {
+  .ed-tool { width: 60px; min-height: 54px; }
+  .ed-tool .nm { display: none; }
+  .ed-row { padding: 6px 10px 7px; }
+}
+
 
 .custom-actions { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
 
@@ -800,10 +958,80 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
   50%      { box-shadow: 0 5px 0 var(--amber-deep), 0 0 0 4px rgba(255, 214, 90, 0.55), 0 9px 22px rgba(255, 180, 40, 0.45); }
 }
 
+/* ---------- Level intro: a roadside route marker ---------- */
+/* Named after what it actually is. A centred "LEVEL 1" that fades is the
+   generic answer and says nothing about WHERE you are; a route marker is this
+   game's own vernacular, and it carries the world, the number and the level's
+   name in one glance. It never takes a click — the first tap is the throttle. */
+.level-intro {
+  position: fixed; top: 13%; left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 22px 12px 14px;
+  background: var(--cream);
+  border: 4px solid var(--ink);
+  border-radius: 18px;
+  box-shadow: 0 6px 0 var(--board-edge), 0 14px 26px rgba(30, 18, 6, 0.28);
+  pointer-events: none;
+  max-width: min(560px, calc(100vw - 32px));
+  animation: li-drop 0.5s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+
+/* The shield is the signature: the one shape on the card that reads "road"
+   rather than "menu". */
+.level-intro .li-shield {
+  flex: none;
+  width: 58px; height: 58px;
+  display: grid; place-items: center;
+  font-size: 1.9rem; line-height: 1;
+  background: var(--amber-hi);
+  border: 4px solid var(--ink);
+  border-radius: 14px 14px 22px 22px;
+  box-shadow: inset 0 -4px 0 var(--amber-deep);
+}
+
+.level-intro .li-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+
+.level-intro .li-eyebrow {
+  font-family: 'Fredoka', sans-serif;
+  font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-soft);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.level-intro .li-title {
+  font-family: var(--display);
+  font-size: 1.85rem; line-height: 1.05;
+  color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.level-intro.out { animation: li-lift 0.4s ease-in both; }
+
+@keyframes li-drop {
+  from { opacity: 0; transform: translate(-50%, -70px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes li-lift {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to   { opacity: 0; transform: translate(-50%, -34px); }
+}
+
+@media (max-width: 560px) {
+  .level-intro { top: 11%; gap: 11px; padding: 10px 16px 10px 11px; }
+  .level-intro .li-shield { width: 46px; height: 46px; font-size: 1.5rem; }
+  .level-intro .li-title { font-size: 1.4rem; }
+  .level-intro .li-eyebrow { font-size: 0.62rem; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
   /* Animations are the reveal, so pin the end states when motion is off. */
   .overlay.cutscene, .overlay.cutscene .cutscene-stage { opacity: 1; transform: none; }
   .reveal-art.shattered .reveal-lock { display: none; }
   .reveal-art.shattered .reveal-icon { opacity: 1; transform: translate(-50%, -50%); }
+  .level-intro { opacity: 1; transform: translateX(-50%); }
+  .level-intro.out { opacity: 0; }
 }

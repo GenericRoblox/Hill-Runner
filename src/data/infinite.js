@@ -78,7 +78,7 @@ function valueNoise(x, wav, seed) {
 }
 
 const THEME_TERRAIN = {
-  1: { style: 'smooth', maxGrade: 0.58, octaves: [[2600, 270], [900, 125], [340, 50]] }, // Farm: bounciest
+  1: { style: 'smooth', maxGrade: 0.7, octaves: [[2600, 270], [900, 125], [340, 50]] }, // Farm: bounciest
   2: { style: 'smooth', maxGrade: 0.50, octaves: [[2600, 240], [1000, 85]] },            // Town: mellow rolls
   3: { style: 'terraced', grade: 0.42, threshold: 60, flat: [220, 520], octaves: [[3000, 310]] }, // City: ramp → flat
   4: { style: 'smooth', maxGrade: 0.62, octaves: [[2300, 290], [750, 135], [300, 58]] }, // Mines: rugged
@@ -400,16 +400,16 @@ const THEME_FEATURES = {
   4: [ // Mines: rugged rock, rockfalls, lava, ice
     [terrainRun, 5.5], [rockfall, 1.5], [crumbleBridge, 1.2],
     [moltenPit('lava'), 1.2], [icePatch, 1.3], [jumpHole, 0.7],
-    [tireStack, 1], [gapJump, 1.7],
+    [tireStack, 1], [gapJump, 3.0],
   ],
   5: [ // Castle: broad ramparts, fire and steel
     [terrainRun, 5], [fireball, 1.3], [spikeRamp, 1.1], [arrowVolley, 1.2],
-    [spikyBall, 1.3], [beam, 0.8], [gapJump, 1.7], [moltenPit('lava'), 0.7],
+    [spikyBall, 1.3], [beam, 0.8], [gapJump, 2.2], [moltenPit('lava'), 0.7],
   ],
   6: [ // Factory: flattest terraces, machines everywhere
     [terrainRun, 7], [compactor, 1.6], [conveyor, 1.8], [spring, 1.2],
     [blade, 1.3], [fallingScrap, 1], [sludgeVat, 1], [pipeRun, 0.8],
-    [press, 1], [gapJump, 1.2],
+    [press, 1], [gapJump, 2.2],
   ],
 };
 

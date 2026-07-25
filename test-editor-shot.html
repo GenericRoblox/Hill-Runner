@@ -44,13 +44,12 @@
     const { screens } = await import('./src/core/ScreenManager.js');
     const ed = screens.screens.editor;
     if (screens.currentName === 'editor') {
-      ed._setMode('obstacle');
+      ed._selectTool('build');
       const q = new URLSearchParams(location.search);
       if (q.get('cat')) ed._catalogModal();
       else if (q.get('thover') != null) {
         // Terrain-mode hover preview for tool index &thover at cell 25.
-        ed._setMode('terrain');
-        ed.toolIndex = +q.get('thover');
+        ed._selectTool('shape', q.get('thover'));
         ed.mouse = { x: 1530, y: 590, cell: 25, row: 0, inWorld: true };
       } else {
         ed._openParams(ed.lvl.obstacles[1]);

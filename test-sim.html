@@ -5,207 +5,53 @@
 <pre id="out">running...</pre>
 <script src="lib/matter.min.js"></script>
 <script type="module">
+// Full-campaign physics regression: a bot drives every level of every world at
+// the upgrade tiers a player would plausibly have there. The bot itself lives
+// in test-simbot.js (shared with test-world.html, which runs a single world).
 const lines = [];
 const flush = () => document.getElementById('out').textContent = lines.join('\n');
 const log = m => { lines.push(m); flush(); };
 window.onerror = (m, s, l) => { log(`WINDOW ERROR: ${m} @ ${s}:${l}`); };
 
 try {
-  const { PhysicsWorld } = await import('./src/physics/PhysicsWorld.js');
-  const { Terrain } = await import('./src/physics/Terrain.js');
-  const { Obstacles } = await import('./src/physics/Obstacles.js');
-  const { Car } = await import('./src/physics/Car.js');
-  const { getLevel } = await import('./src/data/levels.js');
-  const { getStatsAtTiers } = await import('./src/data/vehicles.js');
+  const { simulate, settleCheck, TIERS } = await import('./test-simbot.js');
+  const { stock, tier1, tier2, tier3, maxed } = TIERS;
 
-  const STEP = 1000 / 60;
+  log(settleCheck());
 
-  function simulate(levelIndex, vehicleId = 'pickup', upgrades = { engine: 0, suspension: 0, tires: 0, brakes: 0 }, worldId = 1) {
-    const level = getLevel(worldId, levelIndex);
-    const pw = new PhysicsWorld();
-    const terrain = new Terrain(level, pw);
-    const obstacles = new Obstacles(level, pw);
-    const stats = getStatsAtTiers(vehicleId, upgrades);
-    const car = new Car(stats, level.startX, level.startY);
-    car.addTo(pw);
+  const all = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+  const run = (world, up, levels = all, veh = 'pickup') => {
+    for (const i of levels) log(simulate(i, veh, up, world));
+  };
 
-    let stallTime = 0, reverseUntil = -1, maxX = 0, result = 'timeout', t = 0;
-    const maxSteps = 60 * 150;
-
-    for (let i = 0; i < maxSteps; i++) {
-      t = i / 60;
-      const now = pw.timestamp();
-      const grounded = car.groundedWheelCount(now) > 0;
-      const angle = car.normAngle();
-
-      // Lethal timing hazards ahead? Any player stops and waits for the
-      // opening cue, then commits; the bot does the same (blind driving
-      // can't validate these). `_cleared` latches the commit per hazard.
-      let waiting = false, backOff = false, committed = false;
-      for (const it of obstacles.items) {
-        if (it._cleared) continue;
-        if (it.type === 'ball') {
-          const d = it.ax - car.position().x;
-          // Park just outside the swing reach (speed-scaled braking margin):
-          // a distant standstill can't cross the corridor in half a period.
-          const stopZone = it.sweep + 130 + Math.max(0, car.velocity().x) * 30;
-          if (d < 40 || d > stopZone) continue;
-          // Go as the ball swings through center AWAY from us — but only
-          // commit once parked NEAR the corridor: latching while still
-          // braking far out means the ball is back by the time we arrive.
-          if (d < it.sweep + 260 && Math.abs(it.ball.position.x - it.ax) < 50 && it.ball.velocity.x > 0.5) it._cleared = true;
-          else waiting = true;
-        } else if (it.type === 'press') {
-          const d = it.cx - car.position().x;
-          // Speed-scaled engagement, like rockfall: a fast car must start
-          // braking well out or it coasts to a stop under the block.
-          if (d < 40 || d > Math.max(260, 170 + car.velocity().x * 30)) continue;
-          const openFrac = (it.groundY - 14 - (it.body.position.y + it.h / 2)) / (it.clearance - 14);
-          if (openFrac > 0.5 && it.body.plugin.rising) it._cleared = true;
-          else {
-            waiting = true;
-            // Rolled to a stop under the block (e.g. braking for another
-            // hazard at the same time): back out — parking there is lethal.
-            if (d < 130) backOff = true;
-          }
-        } else if (it.type === 'rockfall') {
-          const d = it.x - car.position().x;
-          const stopZone = 170 + Math.max(0, car.velocity().x) * 30;
-          if (d < 40 || d > stopZone) continue;
-          // Commit the moment a rock has fallen past the road line: the next
-          // one is a full period + fall-time away.
-          if (!it.rock.isStatic && it.rock.position.y > it.groundY + 60) { it._cleared = true; committed = true; }
-          else {
-            waiting = true;
-            // Parked under the chute is lethal AND leaves no run-up — back up.
-            if (d < 300) backOff = true;
-          }
-        } else if (it.type === 'fireball' || it.type === 'arrows') {
-          const d = it.x - car.position().x;
-          // Once armed, stay engaged until committed: the speed-scaled zone
-          // alone causes a stop/re-accelerate seesaw that creeps the car
-          // right onto the hazard's lip/curtain edge.
-          const stopZone = 220 + Math.max(0, car.velocity().x) * 32;
-          if (d < 40) continue;
-          if (d > stopZone && !it._seen) continue;
-          it._seen = true;
-          // Parked too far back (after a long reverse): creep forward into
-          // the parking band — but never skip braking on a hot arrival.
-          if (d > 420 && car.velocity().x < 3) continue;
-          let go;
-          if (it.type === 'fireball') {
-            // Primary commit: the fireball is parked with most of the pause
-            // ahead AND we're close — either stopped (full run-up fits) or
-            // already fast (carry through). The dive-commit only has ~0.9s
-            // of margin, so it's reserved for close-and-fast carry-throughs.
-            // Mid speeds always brake to a stop first.
-            const fb = it.ball;
-            const vx = car.velocity().x;
-            const frac = ((now / 1000) / it.period + it.phase) % 1;
-            const dive = !fb.isStatic && fb.velocity.y > 0.5 && fb.position.y > it.groundY + 30;
-            go = (dive && d < 380 && vx > 11)
-              || (fb.isStatic && (1 - frac) * it.period > 1.15 && d < 420 && (vx < 6 || vx > 11));
-          } else {
-            // Go right as a volley ends — a full lull to cross in.
-            const p = ((now / 1000) / it.period + it.phase) % 1;
-            go = p > it.rainFrac && p < it.rainFrac + 0.15;
-          }
-          if (go && car.velocity().x > -0.5) { it._cleared = true; committed = true; } // never commit mid-reverse
-          else {
-            waiting = true;
-            if (d < 310) backOff = true;
-          }
-        }
-      }
-
-      // --- simple driver bot ---
-      if (committed) reverseUntil = -1; // a commit cancels any pending back-off
-      let inp = { gas: false, brake: false };
-      if (t < reverseUntil) {
-        inp.brake = true; // reversing out of a stall
-      } else if (!grounded) {
-        if (angle > 0.22) inp.gas = true;        // nose dipping: pull up
-        else if (angle < -0.22) inp.brake = true; // nose too high: push down
-      } else if (waiting) {
-        inp.brake = car.velocity().x > 1.0; // stop short, don't reverse
-        if (backOff && !inp.brake) reverseUntil = t + 0.5;
-        stallTime = 0;
-      } else {
-        inp.gas = true;
-        // Stall detection: grounded, throttle on, but not moving -> back up for a run-up.
-        if (car.speed() < 0.6) {
-          stallTime += 1 / 60;
-          if (stallTime > 1.2) { reverseUntil = t + 1.4; stallTime = 0; }
-        } else stallTime = 0;
-      }
-
-      const verdict = car.update(inp, 1 / 60, now);
-      pw.step(STEP);
-      maxX = Math.max(maxX, car.position().x);
-
-      if (verdict) { result = verdict.toUpperCase(); break; } // STUCK or SANK
-      if (car.position().y > level.deathY) { result = 'FELL'; break; }
-      if (car.position().x > level.finishX) { result = 'WIN'; break; }
-    }
-
-    const pct = Math.round(100 * maxX / level.finishX);
-    car.removeFrom(pw); obstacles.destroy(); terrain.destroy(); pw.destroy();
-    const tag = Object.values(upgrades).some(v => v > 0)
-      ? ` [${vehicleId} e${upgrades.engine}s${upgrades.suspension}t${upgrades.tires}b${upgrades.brakes}]`
-      : ` [${vehicleId} stock]`;
-    const wtag = worldId === 1 ? 'F' : worldId === 2 ? 'T' : worldId === 3 ? 'C' : worldId === 4 ? 'M' : 'K';
-    return `${wtag}${levelIndex + 1}${tag} "${level.name}": ${result} t=${t.toFixed(1)}s progress=${pct}% ` +
-           `(finishX=${Math.round(level.finishX)}, target=${level.targetTime}s, airTime=${car.airTime.toFixed(1)}s)`;
-  }
-
-  // Suspension sanity: car standing still for 2s should settle with chassis above wheels.
-  {
-    const level = getLevel(1, 0);
-    const pw = new PhysicsWorld();
-    const terrain = new Terrain(level, pw);
-    const stats = getStatsAtTiers('pickup', { engine: 0, suspension: 0, tires: 0, brakes: 0 });
-    const car = new Car(stats, level.startX, level.startY);
-    car.addTo(pw);
-    for (let i = 0; i < 120; i++) { car.update({ gas: false, brake: false }, 1 / 60, pw.timestamp()); pw.step(STEP); }
-    const clearance = car.wheels[0].position.y - car.chassis.position.y;
-    log(`SETTLE: chassis is ${clearance.toFixed(1)}px above wheel centers (expect ~15-35), ` +
-        `chassisY=${car.chassis.position.y.toFixed(0)}, angle=${car.normAngle().toFixed(3)}`);
-    car.removeFrom(pw); terrain.destroy(); pw.destroy();
-  }
-
-  const stock = { engine: 0, suspension: 0, tires: 0, brakes: 0 };
-  const tier1 = { engine: 1, suspension: 0, tires: 0, brakes: 0 };
-  const tier2 = { engine: 2, suspension: 1, tires: 1, brakes: 1 };
-  const tier3 = { engine: 3, suspension: 2, tires: 2, brakes: 2 };
-  const maxed = { engine: 3, suspension: 3, tires: 3, brakes: 3 };
-
-  // Farm: stock-passable (L9+ assumes engine tier 1).
-  for (let i = 0; i < 10; i++) log(simulate(i));
-  for (const i of [6, 7, 8, 9]) log(simulate(i, 'pickup', tier1));
+  // Farm: stock through L6; the ramp gaps in 7-10 want the 1000-coin engine.
+  run(1, stock);
+  run(1, tier1, [6, 7, 8, 9]);
+  run(1, tier2, [7, 9]);
   log(simulate(0, 'sports'));
   log(simulate(0, 'bike'));
-  log(simulate(9, 'pickup', maxed));
 
-  // Town: expected player state is engine tier 1-2 (or a stock sports car).
-  for (let i = 0; i < 10; i++) log(simulate(i, 'pickup', tier1, 2));
-  for (const i of [4, 6, 7, 8, 9]) log(simulate(i, 'pickup', tier2, 2));
+  // Town: engine tier 1 early, tier 2 from the rooftop levels on.
+  run(2, tier1);
+  run(2, tier2, [4, 5, 6, 7, 8, 9]);
   log(simulate(0, 'sports', stock, 2));
-  log(simulate(9, 'pickup', maxed, 2));
 
-  // City: expected player state is engine tier 2-3 (or an upgraded sports car).
-  for (let i = 0; i < 10; i++) log(simulate(i, 'pickup', tier2, 3));
-  for (let i = 0; i < 10; i++) log(simulate(i, 'pickup', tier3, 3));
-  log(simulate(0, 'sports', tier2, 3));
-  log(simulate(9, 'pickup', maxed, 3));
+  // City: tier 2-3.
+  run(3, tier2);
+  run(3, tier3);
 
-  // Mines: expected player state is engine tier 3 (or maxed).
-  for (let i = 0; i < 10; i++) log(simulate(i, 'pickup', tier3, 4));
-  for (let i = 0; i < 10; i++) log(simulate(i, 'pickup', maxed, 4));
-  log(simulate(0, 'sports', tier3, 4));
+  // Mines: tier 3, spot-checked maxed.
+  run(4, tier3);
+  run(4, maxed);
 
-  // Castle: expected player state is a maxed (or near-maxed) car.
-  for (let i = 0; i < 10; i++) log(simulate(i, 'pickup', tier3, 5));
-  for (let i = 0; i < 10; i++) log(simulate(i, 'pickup', maxed, 5));
+  // Castle: tier 3 and maxed.
+  run(5, tier3);
+  run(5, maxed);
+
+  // Factory: the end of the campaign — tier 3 and maxed.
+  run(6, tier3);
+  run(6, maxed);
+
   log('SIM COMPLETE');
 } catch (e) {
   log('FATAL: ' + e.message + '\n' + e.stack);

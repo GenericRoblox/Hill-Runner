@@ -19,7 +19,9 @@
       <h2>Paused</h2>
       <button id="btn-resume" class="btn primary">Resume</button>
       <button id="btn-restart" class="btn">Restart</button>
-      <button id="btn-mute" class="btn">🔊 Sound: On</button>
+      <!-- No mute button on CrazyGames: their game setting outranks any
+           in-game toggle, so the site's own control is the only one. main.js
+           null-guards #btn-mute for exactly this. -->
       <button id="btn-quit" class="btn">Quit to Level Select</button>
     </div>
   </div>

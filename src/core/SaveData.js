@@ -36,6 +36,10 @@ function defaultSave() {
     lastLoginDay: null, // for daily bonus
     muted: false,       // master mute (sound + music), toggled from home/pause
     upgradeHintShown: false, // one-time "upgrade your car" prompt
+    // False until the player has been dropped into their first level. Portals
+    // (CrazyGames' quality bar especially) want a brand-new player driving
+    // immediately, not reading a menu, so the very first launch skips Home.
+    firstRunDone: false,
     // One-time "new mode" reveal cutscenes (Worlds menu). Sticky once the
     // player has watched the unlock play out, so it never replays.
     infiniteSeen: false, // Infinite mode reveal shown
@@ -202,6 +206,9 @@ class SaveData {
   }
 
   // --- Master mute (AudioBus reads this at boot; setUserMuted writes it) ---
+  isFirstRun() { return !this.data.firstRunDone; }
+  markFirstRunDone() { this.data.firstRunDone = true; this.save(); }
+
   isMuted() { return !!this.data.muted; }
   setMuted(m) { this.data.muted = !!m; this.save(); }
 

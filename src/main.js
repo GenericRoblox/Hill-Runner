@@ -5,7 +5,7 @@ import { input } from './core/InputManager.js';
 import { saveData } from './core/SaveData.js';
 import { platform } from './core/Platform.js';
 import { ads } from './core/Breaks.js';
-import { setUserMuted, isUserMuted } from './ui/AudioBus.js';
+import { setUserMuted, isUserMuted, setPortalMuted } from './ui/AudioBus.js';
 import { loadTextures } from './ui/Textures.js';
 import { loadSprite } from './ui/Sprites.js';
 import { VEHICLES } from './data/vehicles.js';
@@ -83,6 +83,10 @@ async function boot() {
   await platform.init();
   saveData.load();
 
+  // Host-site audio control (CrazyGames' game settings). Fires once with the
+  // current value and again on every change; a no-op everywhere else.
+  platform.watchAudioSetting(setPortalMuted);
+
   // Dev deep-link: ?screen=<name> or ?world=4&level=2 jumps straight there;
   // add &bot=1 to hold the gas down (for screenshotting mid-level).
   const q = new URLSearchParams(location.search);
@@ -116,6 +120,14 @@ async function boot() {
     // &warp=N fast-forwards ~N seconds of sim synchronously.
     const warp = +(q.get('warp') || 0);
     for (let i = 0; i < warp * 12; i++) screens.update(100);
+  } else if (!q.has('screen') && saveData.isFirstRun()) {
+    // FIRST LAUNCH EVER: straight into Farm 1, no menu in the way. Portals
+    // (CrazyGames' quality bar in particular) want a brand-new player driving
+    // within seconds of the page loading, not reading a home screen first —
+    // and the level intro card names where they've landed. The flag is set
+    // before the jump so a refresh mid-level doesn't relaunch them into it.
+    saveData.markFirstRunDone();
+    screens.show('game', { worldId: 1, levelIndex: 0 });
   } else {
     // &id=<customLevelId> targets a specific created level (editor deep-link);
     // &cam=<x> sets the editor's starting scroll.
@@ -127,7 +139,10 @@ async function boot() {
 
   const bonus = saveData.claimDailyBonus(DAILY_BONUS);
   if (bonus > 0) {
-    setTimeout(() => showToast(`🎁 Daily bonus: +${bonus} coins!`), 600);
+    // Held until the level intro card has cleared: both sit top-centre, and on
+    // a first launch (which drops straight into a level) they would otherwise
+    // land on top of each other.
+    setTimeout(() => showToast(`🎁 Daily bonus: +${bonus} coins!`), 2700);
   }
 
   platform.loadingStop();

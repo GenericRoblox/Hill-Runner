@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>payout probe</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <script>try { localStorage.removeItem('hillrunner_save_v1'); } catch (e) {}</script>
+  <pre id="log" style="position:fixed;top:0;left:0;z-index:99;background:#fff;color:#000;font:12px monospace;max-width:80vw;white-space:pre-wrap;padding:4px">running</pre>
+
+  <canvas id="game-canvas"></canvas>
+  <div id="menu-root"></div>
+  <div id="pause-overlay" class="overlay hidden">
+    <div class="panel"><h2>Paused</h2>
+      <button id="btn-resume" class="btn primary">Resume</button>
+      <button id="btn-restart" class="btn">Restart</button>
+      <button id="btn-mute" class="btn">Sound</button>
+      <button id="btn-quit" class="btn">Quit</button>
+    </div>
+  </div>
+  <div id="result-overlay" class="overlay hidden"><div class="panel" id="result-panel"></div></div>
+  <div id="toast" class="hidden"></div>
+  <div id="boot-error" class="overlay hidden">
+    <div class="panel"><h2 id="boot-error-title"></h2><div class="stat-line" id="boot-error-msg"></div></div>
+  </div>
+
+  <script src="lib/matter.min.js"></script>
+  <script type="module" src="src/main.js"></script>
+  <script type="module">
+    const out = [];
+    const put = () => { document.getElementById('log').textContent = out.join('\n'); };
+    const wait = (n) => new Promise(r => setTimeout(r, n));
+    (async () => {
+      try {
+        for (let i = 0; i < 80; i++) { await wait(25); if (window.__hillRunnerBooted) break; }
+        const { screens } = await import('./src/core/ScreenManager.js');
+        const { saveData } = await import('./src/core/SaveData.js');
+        const { calcStars, calcPayout } = await import('./src/data/economy.js');
+        const { getLevel } = await import('./src/data/levels.js');
+        const { sound } = await import('./src/ui/Sound.js');
+
+        const g = screens.current;
+        out.push('screen: ' + screens.currentName);
+        out.push('state: ' + g.state);
+        out.push('coins after win: ' + saveData.getCoins());
+        out.push('stars 1-0: ' + saveData.getLevelStars('1-0'));
+        out.push('time: ' + (g.time || 0).toFixed(1) + 's  target: ' + g.level.targetTime + 's');
+        out.push('flipped: ' + g.car.everFlipped);
+        out.push('engine oscillator alive after win: ' + !!sound.engineOsc);
+
+        // Recompute what the win SHOULD have paid, from a clean slate.
+        const lv = getLevel(1, 0);
+        const st = calcStars(lv, 30, false);
+        out.push('--- fresh-slate check ---');
+        out.push('calcStars(30s, no flip) = ' + st);
+        out.push('calcPayout(prevBest=0)  = ' + calcPayout(lv, 30, st, 6, 0));
+        out.push('calcPayout(prevBest=3)  = ' + calcPayout(lv, 30, st, 6, 3));
+        out.push('basePayout = ' + lv.basePayout);
+        put();
+      } catch (e) {
+        out.push('THROW ' + e.message + ' | ' + e.stack);
+        put();
+      }
+    })();
+  </script>
+</body>
+</html>

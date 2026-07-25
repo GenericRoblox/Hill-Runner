@@ -148,7 +148,7 @@ export const OBSTACLE_TYPES = [
     id: 'bouncer', name: 'Tire Stack', icon: '🛞',
     params: [P('w', 'Width', 100, 200, 10, 140)],
     span: p => p.w,
-    box: () => ({ up: 74, down: 8 }),
+    box: () => ({ up: 58, down: 30 }),   // crown proud, flanks sunk into the road
     build: (x, gy, p) => ({ defs: [{ type: 'bouncer', x: x + p.w / 2, groundY: gy, w: p.w }] }),
   },
   {

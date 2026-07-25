@@ -44,8 +44,24 @@
     // timers but never fires rAF, which only runs under --screenshot.
     const frames = (n) => new Promise((res) => setTimeout(res, n * 25));
     const canvas = document.getElementById('game-canvas');
-    const mouse = (type, x, y, button = 0, target = canvas) =>
-      target.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, button, bubbles: true }));
+    // The editor is pointer-event driven (one code path for mouse/touch/pen),
+    // so the harness drives it the way a real device would.
+    let pid = 1;
+    const ptr = (type, x, y, button = 0, target = canvas, opts = {}) =>
+      target.dispatchEvent(new PointerEvent(type, {
+        clientX: x, clientY: y, button, bubbles: true,
+        pointerId: opts.pointerId ?? pid, pointerType: opts.pointerType ?? 'mouse',
+        isPrimary: true,
+      }));
+    // A whole press: down on the canvas, move + up on window (a stroke that
+    // ends over the chrome still has to finish cleanly).
+    const strokeTo = async (x0, y0, x1, y1, button = 0) => {
+      pid++;
+      ptr('pointerdown', x0, y0, button);
+      ptr('pointermove', x1, y1, button, window);
+      ptr('pointerup', x1, y1, button, window);
+      await frames(3);
+    };
 
     try {
       await frames(5);
@@ -54,67 +70,83 @@
       log('screen: ' + screens.currentName + (screens.currentName === 'editor' ? ' OK' : ' FAIL'));
       log('level id: ' + ed.lvl.id + (ed.lvl.id === 'uitest' ? ' OK' : ' FAIL'));
       log('ui: ' + (document.getElementById('editor-ui') ? 'OK' : 'FAIL'));
-      log('hotbar slots: ' + ed.ui.querySelectorAll('.ed-slot').length);
+      const tools = ed.ui.querySelectorAll('.ed-tool').length;
+      log('tool tray: ' + tools + (tools ? ' OK' : ' FAIL'));
+      log('held tool visible: ' + (ed.ui.querySelector('.ed-tool.held') ? 'OK' : 'FAIL'));
 
       // World x=600..900 maps to screen (wx - camX) * zoom.
       const sx = (wx) => (wx - ed.camX) * ed.zoom;
       const sy = (wy) => (wy - ed.camY) * ed.zoom;
 
-      // 1. Paint a slope with tool 3 (Slope Up) across cells 10-14
-      ed.toolIndex = 2;
-      mouse('mousedown', sx(10 * 60 + 30), sy(600));
-      mouse('mousemove', sx(14 * 60 + 30), sy(600), 0, window);
-      mouse('mouseup', sx(14 * 60 + 30), sy(600), 0, window);
-      await frames(3);
+      // 1. Paint a slope with the Shape > Up tool across cells 10-14
+      ed._selectTool('shape', 'up');
+      await strokeTo(sx(10 * 60 + 30), sy(600), sx(14 * 60 + 30), sy(600));
       const h14 = ed.lvl.cells[14].h;
       log('slope paint: h[14]=' + h14 + (h14 === 4 ? ' OK' : ' FAIL'));
 
-      // 2. Right-drag delete cells 20-22 -> gap
-      mouse('mousedown', sx(20 * 60 + 30), sy(600), 2);
-      mouse('mousemove', sx(22 * 60 + 30), sy(600), 2, window);
-      mouse('mouseup', sx(22 * 60 + 30), sy(600), 2, window);
-      await frames(3);
+      // 2. Right-drag erases ground (the desktop shortcut for the Erase tool)
+      await strokeTo(sx(20 * 60 + 30), sy(600), sx(22 * 60 + 30), sy(600), 2);
       log('gap delete: h[21]=' + ed.lvl.cells[21].h + (ed.lvl.cells[21].h === null ? ' OK' : ' FAIL'));
 
-      // 3. Liquid paint (water = index 9)
-      ed.toolIndex = 9;
-      mouse('mousedown', sx(30 * 60 + 30), sy(600));
-      mouse('mousemove', sx(32 * 60 + 30), sy(600), 0, window);
-      mouse('mouseup', sx(32 * 60 + 30), sy(600), 0, window);
-      await frames(3);
+      // 2b. ...and so does the Erase tool, which is the path a phone has.
+      ed._pin('erase');
+      await strokeTo(sx(25 * 60 + 30), sy(600), sx(26 * 60 + 30), sy(600));
+      log('erase tool cut: h[25]=' + ed.lvl.cells[25].h + (ed.lvl.cells[25].h === null ? ' OK' : ' FAIL'));
+      ed._pin('erase');
+
+      // 3. Liquid paint
+      ed._selectTool('paint', 'water');
+      await strokeTo(sx(30 * 60 + 30), sy(600), sx(32 * 60 + 30), sy(600));
       log('water paint: ' + ed.lvl.cells[31].liquid + (ed.lvl.cells[31].liquid === 'water' ? ' OK' : ' FAIL'));
+
+      // 3b. Undo takes the water back off; redo puts it on again.
+      ed._undoStep();
+      await frames(2);
+      log('undo: ' + ed.lvl.cells[31].liquid + (ed.lvl.cells[31].liquid === undefined ? ' OK' : ' FAIL'));
+      ed._redoStep();
+      await frames(2);
+      log('redo: ' + ed.lvl.cells[31].liquid + (ed.lvl.cells[31].liquid === 'water' ? ' OK' : ' FAIL'));
 
       // 4. Obstacle mode: place a ramp (slot 0) at cell ~40, anchored on the
       // ground line (row 0); also verify free placement stores the row.
-      ed._setMode('obstacle');
-      ed.slot = 0;
+      ed._selectTool('build', 'ramp');
       await frames(2);
-      mouse('mousemove', sx(40 * 60), sy(600), 0, window);
-      mouse('mousedown', sx(40 * 60), sy(600));
-      mouse('mouseup', sx(40 * 60), sy(600), 0, window);
-      await frames(3);
+      ptr('pointermove', sx(40 * 60), sy(600), 0, window);
+      await strokeTo(sx(40 * 60), sy(600), sx(40 * 60), sy(600));
       log('place: ' + ed.lvl.obstacles.length + (ed.lvl.obstacles.length === 1 ? ' OK' : ' FAIL')
         + ' type=' + (ed.lvl.obstacles[0] || {}).type
         + ' h=' + (ed.lvl.obstacles[0] || {}).h + ((ed.lvl.obstacles[0] || {}).h === 0 ? ' OK' : ' FAIL'));
 
       // 4b. Free placement in the air: place another ramp 4 rows up, then delete it.
-      mouse('mousemove', sx(50 * 60), sy(500), 0, window);
-      mouse('mousedown', sx(50 * 60), sy(500));
-      mouse('mouseup', sx(50 * 60), sy(500), 0, window);
-      await frames(2);
+      ptr('pointermove', sx(50 * 60), sy(500), 0, window);
+      await strokeTo(sx(50 * 60), sy(500), sx(50 * 60), sy(500));
       const air = ed.lvl.obstacles[1];
       log('air place: h=' + (air || {}).h + ((air || {}).h === 4 ? ' OK' : ' FAIL'));
-      mouse('mousemove', sx(50 * 60), sy(480), 2, window);
-      mouse('mousedown', sx(50 * 60), sy(480), 2);
-      mouse('mouseup', sx(50 * 60), sy(480), 2, window);
-      await frames(2);
+      ptr('pointermove', sx(50 * 60), sy(480), 2, window);
+      await strokeTo(sx(50 * 60), sy(480), sx(50 * 60), sy(480), 2);
       log('air delete: ' + ed.lvl.obstacles.length + (ed.lvl.obstacles.length === 1 ? ' OK' : ' FAIL'));
 
+      // 4c. Drag the placed obstacle two columns right and one row up.
+      {
+        const before = ed.lvl.obstacles[0].cell;
+        pid++;
+        ptr('pointerdown', sx(40 * 60 + 10), sy(590));
+        ptr('pointermove', sx(42 * 60 + 10), sy(590 - 25), 0, window);
+        ptr('pointerup', sx(42 * 60 + 10), sy(590 - 25), 0, window);
+        await frames(3);
+        const ob = ed.lvl.obstacles[0];
+        log('drag move: cell ' + before + '->' + ob.cell + ' h=' + ob.h
+          + (ob.cell === before + 2 && ob.h === 1 ? ' OK' : ' FAIL'));
+        log('drag opened no panel: ' + (ed.paramsEl.classList.contains('hidden') ? 'OK' : 'FAIL'));
+        ed._undoStep();
+        await frames(2);
+        log('drag undo: cell=' + ed.lvl.obstacles[0].cell
+          + (ed.lvl.obstacles[0].cell === before ? ' OK' : ' FAIL'));
+      }
+
       // 5. Click the placed obstacle -> params panel opens
-      mouse('mousemove', sx(40 * 60), sy(590), 0, window);
-      mouse('mousedown', sx(40 * 60), sy(590));
-      mouse('mouseup', sx(40 * 60), sy(590), 0, window);
-      await frames(2);
+      ptr('pointermove', sx(40 * 60), sy(590), 0, window);
+      await strokeTo(sx(40 * 60), sy(590), sx(40 * 60), sy(590));
       const panelOpen = !ed.paramsEl.classList.contains('hidden');
       log('params panel: ' + (panelOpen ? 'OK' : 'FAIL'));
       const slider = ed.paramsEl.querySelector('input[type=range]');
@@ -127,16 +159,36 @@
 
       // 6. Right-click deletes the obstacle
       ed._closeParams();
-      mouse('mousemove', sx(40 * 60), sy(560), 2, window);
-      mouse('mousedown', sx(40 * 60), sy(560), 2);
-      mouse('mouseup', sx(40 * 60), sy(560), 2, window);
-      await frames(2);
+      ptr('pointermove', sx(40 * 60), sy(560), 2, window);
+      await strokeTo(sx(40 * 60), sy(560), sx(40 * 60), sy(560), 2);
       log('rmb delete: ' + ed.lvl.obstacles.length + (ed.lvl.obstacles.length === 0 ? ' OK' : ' FAIL'));
 
-      // 7. Test-play round trip
+      // 6b. Two-finger pinch zooms and pans -- the camera path a phone uses.
+      {
+        const z0 = ed.tzoom;
+        const T = { pointerType: 'touch' };
+        ptr('pointerdown', 300, 300, 0, canvas, { ...T, pointerId: 101 });
+        ptr('pointerdown', 500, 300, 0, canvas, { ...T, pointerId: 102 });
+        ptr('pointermove', 250, 300, 0, window, { ...T, pointerId: 101 });
+        ptr('pointermove', 550, 300, 0, window, { ...T, pointerId: 102 });
+        const zoomed = ed.tzoom > z0;
+        ptr('pointerup', 250, 300, 0, window, { ...T, pointerId: 101 });
+        ptr('pointerup', 550, 300, 0, window, { ...T, pointerId: 102 });
+        await frames(2);
+        log('pinch zoom: ' + ed.tzoom.toFixed(2) + (zoomed ? ' OK' : ' FAIL'));
+        log('pinch released: ' + (ed._gesture === null ? 'OK' : 'FAIL'));
+      }
+
+      // 6c. A pinch must not have left a stray edit behind.
+      log('no stray edit: ' + ed.lvl.obstacles.length + (ed.lvl.obstacles.length === 0 ? ' OK' : ' FAIL'));
+
+      // 7. Test-play round trip, on the vehicle chosen for testing
+      ed.testVeh = 'bike';
       ed._test();
       await frames(10);
       log('test play: ' + screens.currentName + (screens.currentName === 'game' ? ' OK' : ' FAIL'));
+      log('test vehicle: ' + screens.screens.game.vehicleDef.id
+        + (screens.screens.game.vehicleDef.id === 'bike' ? ' OK' : ' FAIL'));
       screens.screens.game.quit();
       await frames(5);
       log('quit back: ' + screens.currentName + ' id=' + screens.screens.editor.lvl.id

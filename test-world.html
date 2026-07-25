@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><title>Hill Runner single-world sim</title></head>
+<body>
+<pre id="out">running...</pre>
+<script src="lib/matter.min.js"></script>
+<script type="module">
+// Focused variant of test-sim.html: drives ONE world (?w=1..6) at one or more
+// tiers (?t=stock,tier1,...), so a level-design change can be checked in
+// seconds instead of re-running the whole campaign. Same bot, same verdicts.
+const lines = [];
+const flush = () => document.getElementById('out').textContent = lines.join('\n');
+const log = m => { lines.push(m); flush(); };
+window.onerror = (m, s, l) => { log(`WINDOW ERROR: ${m} @ ${s}:${l}`); };
+
+try {
+  const { simulate, TIERS } = await import('./test-simbot.js');
+  const q = new URLSearchParams(location.search);
+  const world = +(q.get('w') || 1);
+  const tiers = (q.get('t') || 'stock').split(',');
+  const veh = q.get('veh') || 'pickup';
+  const only = q.get('lv');
+  const levels = only ? only.split(',').map(n => +n - 1) : [...Array(10).keys()];
+  for (const t of tiers) {
+    for (const i of levels) log(simulate(i, veh, TIERS[t], world));
+  }
+  log('SIM COMPLETE');
+} catch (e) {
+  log('FATAL: ' + e.message + '\n' + e.stack);
+}
+</script>
+</body>
+</html>

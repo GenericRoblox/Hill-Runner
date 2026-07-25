@@ -1,8 +1,12 @@
-// Central audio gate. Three things demand silence, and any one of them wins:
+// Central audio gate. Four things demand silence, and any one of them wins:
 // an ad break (both portals require the game silent while an ad plays), a
 // hidden tab (portal QA rejects games that keep sounding in the background —
 // rAF stops but a looping music element and the engine oscillator would play
-// on), and the player's own mute toggle (persisted in the save profile).
+// on), the player's own mute toggle (persisted in the save profile), and the
+// PORTAL's own audio setting where the site has one — CrazyGames' docs are
+// explicit that its `muteAudio` setting outranks any in-game toggle, so on
+// that build the in-game control is removed entirely and this is the only
+// thing that speaks.
 //
 // Sound and Music own separate AudioContexts, each created lazily on first
 // play (so either may still be null). Suspending the contexts mutes everything
@@ -19,10 +23,11 @@ const silencers = {
   ad: false,
   hidden: typeof document !== 'undefined' && document.hidden,
   user: saveData.isMuted(),
+  portal: false,
 };
 
 export function isSilenced() {
-  return silencers.ad || silencers.hidden || silencers.user;
+  return silencers.ad || silencers.hidden || silencers.user || silencers.portal;
 }
 
 export function isUserMuted() {
@@ -42,6 +47,11 @@ function apply() {
   // next gesture-driven ensureContext() resumes for real.
   forEachContext(ctx => (silent ? ctx.suspend() : ctx.resume()));
 }
+
+// Driven by the host site's own mute control (see platform.watchAudioSetting).
+// Deliberately NOT written to the save profile: it is the portal's state, not
+// the player's preference, and it must not survive into a different build.
+export function setPortalMuted(m) { silencers.portal = !!m; apply(); }
 
 export function muteForAd() { silencers.ad = true; apply(); }
 export function unmuteAfterAd() { silencers.ad = false; apply(); }

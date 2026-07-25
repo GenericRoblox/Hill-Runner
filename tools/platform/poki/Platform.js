@@ -17,6 +17,8 @@ class Platform {
     this.name = 'poki';
     this.ready = false;
     this._inGameplay = false;
+    // Poki has no host-side audio setting: the game keeps its own mute button.
+    this.portalAudioControl = false;
 
     // Poki has no storage API by design: the SDK watches localStorage and
     // IndexedDB and syncs them to their cloud gamesave (1 MB gzipped cap — the
@@ -65,6 +67,12 @@ class Platform {
   }
 
   happytime() { this._call(p => p.happyTime(1)); }
+
+  // No host audio setting on Poki — the in-game toggle is the only one, so
+  // there is nothing to subscribe to. Must still EXIST: main.js calls this on
+  // every build, and a missing method here would throw during boot and leave
+  // the player staring at a bare hillside.
+  watchAudioSetting(_cb) {}
 
   // Poki owns the frequency logic: not every commercialBreak plays an ad, and
   // the promise resolves either way. AdManager has already muted and frozen

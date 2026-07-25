@@ -14,6 +14,18 @@ function approach(current, target, maxDelta) {
   return Math.max(current - maxDelta, target);
 }
 
+// Matter's gravity expressed in px/step^2 (gravity.y * gravityScale * dt^2,
+// dt = 1000/60 ms). Used to time a driven pendulum so it swings at the rate a
+// free one of the same length WOULD have, minus the energy bleed.
+const G_STEP2 = 0.35 * 0.001 * (1000 / 60) ** 2;
+
+// Natural period (seconds) of a pendulum of length `len` at amplitude
+// `angle0`, including the first-order large-angle correction.
+function pendulumPeriod(len, angle0) {
+  const steps = 2 * Math.PI * Math.sqrt(len / G_STEP2) * (1 + (angle0 * angle0) / 16);
+  return steps / 60;
+}
+
 // Small deterministic PRNG (mulberry32) so scrap-metal chunks get stable
 // shapes/colors/positions across runs without needing Math.random().
 function seededRandom(seed) {
@@ -25,6 +37,43 @@ function seededRandom(seed) {
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
+}
+
+// Half-length from an arrow's centre to its steel tip, in the shape drawArrow
+// paints. Used both to park a falling arrow the moment the tip meets the road
+// and to bury a spent one to the same depth.
+const ARROW_TIP = 23;
+
+// One arrow about its own centre, pointing down. Shared by the shafts in
+// flight and the ones stuck in the road so they are visibly the same object.
+function drawArrow(ctx, cx, cy, angle = 0, alpha = 1) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(cx, cy);
+  if (angle) ctx.rotate(angle);
+  ctx.strokeStyle = '#8d7350';
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  ctx.moveTo(0, -17);
+  ctx.lineTo(0, 12);
+  ctx.stroke();
+  ctx.fillStyle = '#e6e9f0';                   // steel head
+  ctx.beginPath();
+  ctx.moveTo(-5, 11);
+  ctx.lineTo(5, 11);
+  ctx.lineTo(0, ARROW_TIP);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#c8543f';                   // fletching
+  for (const sgn of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(0, -17);
+    ctx.lineTo(sgn * 7, -11);
+    ctx.lineTo(0, -6);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 export class Obstacles {
@@ -128,9 +177,64 @@ export class Obstacles {
           Body.setPosition(m.body, { x: m.x, y: m.surfaceY + 90 });
           m.cycle = cyc;
         }
+      } else if (m.kind === 'ball') {
+        // Analytic pendulum: angle(t) = angle0 * cos(2*pi*t/T). Position AND
+        // velocity are written every step, so the strike test and the shove
+        // impulse both read the true swing speed.
+        const w = (Math.PI * 2) / m.period;
+        const t = now / 1000;
+        const ang = m.angle0 * Math.cos(w * t);
+        const dAng = -m.angle0 * w * Math.sin(w * t); // rad/s
+        Body.setPosition(m.body, {
+          x: m.ax + Math.sin(ang) * m.len,
+          y: m.ay + Math.cos(ang) * m.len,
+        });
+        Body.setVelocity(m.body, {          // px/STEP, Matter's unit
+          x: Math.cos(ang) * m.len * dAng / 60,
+          y: -Math.sin(ang) * m.len * dAng / 60,
+        });
+        Body.setAngle(m.body, ang);         // spikes/highlight ride the chain
+        Body.setAngularVelocity(m.body, dAng / 60);
       } else if (m.kind === 'arrows') {
-        const p = (((now / 1000) / m.period + m.phase) % 1 + 1) % 1;
-        m.zone.plugin.raining = p < m.rainFrac;
+        // Real arrows: released from the murder-holes during the volley
+        // window, they FALL with their own hitboxes (lethal while in flight)
+        // and park back in the holes once they've passed the road. There is
+        // no invisible kill box — what you see falling is what kills you.
+        const tSec = now / 1000;
+        const p = ((tSec / m.period + m.phase) % 1 + 1) % 1;
+        const raining = p < m.rainFrac;
+        m.raining = raining;
+        const cyc = Math.floor(tSec / m.period + m.phase);
+        if (m.cycle === null) m.cycle = cyc;
+        if (cyc > m.cycle) { m.cycle = cyc; m.fired = 0; }
+        if (raining) {
+          // Stagger the release across the window so the curtain sweeps
+          // rather than appearing all at once.
+          const slot = Math.floor((p / m.rainFrac) * m.arrows.length);
+          while (m.fired <= slot && m.fired < m.arrows.length) {
+            const a = m.arrows[m.order[m.fired]];
+            if (a.isStatic) {
+              Body.setStatic(a, false);
+              Body.setPosition(a, { x: a.plugin.homeX, y: m.topY });
+              Body.setAngle(a, 0);
+              Body.setAngularVelocity(a, 0);
+              Body.setVelocity(a, { x: 0, y: 9 }); // loosed, not dropped
+            }
+            m.fired++;
+          }
+        }
+        for (const a of m.arrows) {
+          // Park the instant the HEAD reaches the road, not 26px under it —
+          // an arrow that keeps drawing while it sinks through the tarmac
+          // reads as a rendering bug, and the whole point of making these
+          // physical was that what you see is what hits you.
+          if (a.isStatic || a.position.y < m.groundY - ARROW_TIP) continue;
+          m.spent.push({ x: a.position.x, y: m.groundY, at: now, tilt: ((a.position.x * 7919) % 23 - 11) / 90 });
+          if (m.spent.length > 40) m.spent.shift();
+          Body.setStatic(a, true);
+          Body.setPosition(a, { x: a.plugin.homeX, y: m.topY - 90 });
+          Body.setVelocity(a, { x: 0, y: 0 });
+        }
       } else if (m.kind === 'blade') {
         // Continuously spinning Factory blade: a full-diameter bar rotating
         // about its own hub. No position update needed — Body.setAngle alone
@@ -204,19 +308,26 @@ export class Obstacles {
     this.items.push({ type: 'water', x0, w, surface });
   }
 
-  _ball({ ax, ay, len, r, angle0, spiky }) {
-    // Free pendulum on a stiff cable; swings essentially forever. Spiky
-    // variants ride a shorter chain (set by the builder), so they swing faster.
+  // Wrecking ball / Castle flail. DRIVEN pendulum, not a free one: the mover
+  // writes the analytic swing every step, so the rate and the amplitude are
+  // dead constant for the whole run. A free Matter pendulum bleeds energy
+  // through the constraint solver and through every car it clips, and a ball
+  // that quietly stops reaching the road turns a timing puzzle into a dead
+  // prop. The body stays DYNAMIC so a non-lethal clip still shoves the car.
+  _ball({ ax, ay, len, r, angle0, spiky, period }) {
+    // Flails ride a short chain AND a wound-up drive shaft, so they run
+    // noticeably faster than a free pendulum of the same length would (which
+    // is only ~10% quicker on its own). Not much faster than this, though:
+    // the swing is lethal on CLOSING speed, so the pause between passes has
+    // to stay long enough to actually cross the arc from a standstill.
+    const T = period ?? pendulumPeriod(len, angle0) * (spiky ? 0.78 : 1);
     const ball = Bodies.circle(ax + Math.sin(angle0) * len, ay + Math.cos(angle0) * len, r, {
       label: 'ball', density: 0.0045, frictionAir: 0, friction: 0.1, restitution: 0.25,
     });
-    const cable = Constraint.create({
-      pointA: { x: ax, y: ay }, bodyB: ball, pointB: { x: 0, y: 0 },
-      length: len, stiffness: 0.95, damping: 0,
-    });
-    this.all.push(ball, cable);
+    this.all.push(ball);
+    this.movers.push({ kind: 'ball', body: ball, ax, ay, len, angle0, period: T });
     const sweep = Math.abs(Math.sin(angle0)) * len + r; // max horizontal reach
-    this.items.push({ type: 'ball', ax, ay, ball, r, len, sweep, spiky });
+    this.items.push({ type: 'ball', ax, ay, ball, r, len, sweep, spiky, period: T });
   }
 
   _press({ cx, groundY, w, clearance, period, phase }) {
@@ -230,8 +341,12 @@ export class Obstacles {
   }
 
   _lift({ x0, y0, w, rise }) {
-    // Platform parked flush with the approach road (top surface at y0).
-    const platform = Bodies.rectangle(x0 + w / 2, y0 + 11, w - 8, 22, {
+    // Platform parked flush with the approach road (top surface at y0), and
+    // exactly as wide as its shaft: an inset deck leaves a slot at each edge
+    // that a wheel drops into, which leaves the car balanced on the lip with
+    // nothing driving — an unrecoverable frozen run in a place with no way
+    // around.
+    const platform = Bodies.rectangle(x0 + w / 2, y0 + 11, w, 22, {
       isStatic: true, friction: 1.0, label: 'terrain',
     });
     this.all.push(platform);
@@ -297,16 +412,20 @@ export class Obstacles {
     this.items.push({ type: 'stalactite', x, groundY, tipY, rw, rh });
   }
 
+  // Tire stack. Seated in a hollow (see the renderer) with its flanks rounded
+  // off, so the sides are something you scuff rather than slam into — but the
+  // crown still stands proud, because the whole point is a target you aim a
+  // fall at. Clipping the flank used to launch you skyward; that was never the
+  // collider's doing, it was Car.js firing the bounce on ANY contact, and it's
+  // fixed there.
   _bouncer({ x, groundY, w }) {
-    // Solid tire stack; the launch itself comes from Car.js (label 'bouncer'
-    // is both a contact zone and counts as ground in PhysicsWorld).
-    const h = 62;
+    const h = 62, crown = h;
     const pad = Bodies.rectangle(x, groundY - h / 2, w, h, {
       isStatic: true, friction: 0.8, restitution: 0.1, label: 'bouncer',
-      chamfer: { radius: 8 },
+      chamfer: { radius: 14 },
     });
     this.all.push(pad);
-    this.items.push({ type: 'bouncer', x, groundY, w, h });
+    this.items.push({ type: 'bouncer', x, groundY, w, h, crown });
   }
 
   _fireball({ x, groundY, surfaceY, period, phase, r }) {
@@ -334,25 +453,51 @@ export class Obstacles {
     // Free-standing dynamic timber: heavy enough that only a fast hit slams
     // it down. Labeled terrain so a felled beam is drivable ground (and can
     // bridge a small gap).
+    // Light enough that a good hit topples it, dead enough (restitution ~0)
+    // that a hard hit doesn't punt it away: a beam launched clear of its own
+    // pit leaves the gap unbridged, and a beam too heavy to fall leaves it
+    // unbridged as well. The window between those is narrow.
     const beam = Bodies.rectangle(x, groundY - h / 2, 26, h, {
-      label: 'terrain', density: 0.0028, friction: 1.5, restitution: 0.4,
+      label: 'terrain', density: 0.0028, friction: 1.5, restitution: 0.05,
       chamfer: { radius: 4 },
     });
     this.all.push(beam);
-    this.items.push({ type: 'beam', body: beam, h });
+    this.items.push({ type: 'beam', body: beam, h, groundY, x });
   }
 
+  // Archer wall: a machicolated stone gallery over the road that looses a
+  // volley on a cycle. The arrows are REAL bodies — dynamic sensors (so the
+  // road never stops them) that fall from the murder-holes and are lethal the
+  // whole way down, exactly like rockfall debris. Nothing is lethal except an
+  // arrow you can see, and spent shafts stick in the road behind you.
   _arrows({ x, w, groundY, period, phase, rainFrac }) {
-    // Lethal only while plugin.raining (toggled by the mover) — the zone
-    // covers car height under the murder-holes above, trimmed a little
-    // narrower than the visual curtain so an edge graze is forgiven.
-    const zone = Bodies.rectangle(x, groundY - 85, w - 24, 170, {
-      isStatic: true, isSensor: true, label: 'arrows',
+    const topY = groundY - 380;
+    const n = Math.max(4, Math.floor(w / 26));
+    const arrows = [];
+    for (let i = 0; i < n; i++) {
+      const hx = x - w / 2 + (w / n) * (i + 0.5);
+      const a = Bodies.rectangle(hx, topY - 90, 5, 34, {
+        label: 'arrow', density: 0.0016, frictionAir: 0,
+        isSensor: true, isStatic: true,
+      });
+      a.plugin.homeX = hx;
+      arrows.push(a);
+    }
+    // Release order: a strided walk across the holes so a volley scatters
+    // instead of marching left-to-right. The stride is chosen coprime with n
+    // so the walk is a true permutation — every hole fires exactly once.
+    const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+    let stride = 3;
+    while (gcd(stride, n) !== 1) stride++;
+    const start = Math.floor(x / 53) % n;
+    const order = arrows.map((_, i) => (start + i * stride) % n);
+    this.all.push(...arrows);
+    this.movers.push({
+      kind: 'arrows', arrows, order, groundY, topY,
+      period, phase, rainFrac, cycle: null, fired: 0, raining: false, spent: [],
     });
-    zone.plugin.raining = false;
-    this.all.push(zone);
-    this.movers.push({ kind: 'arrows', zone, period, phase, rainFrac });
-    this.items.push({ type: 'arrows', x, w, groundY, topY: groundY - 380, period, phase, rainFrac, zone });
+    const mover = this.movers[this.movers.length - 1];
+    this.items.push({ type: 'arrows', x, w, groundY, topY, period, phase, rainFrac, mover });
   }
 
   // --- Factory set-pieces ---
@@ -409,9 +554,15 @@ export class Obstacles {
           : Bodies.polygon(cx, topY, 6, r, opts);
       const color = colors[(i * 2 + Math.floor(rnd() * 2)) % colors.length];
       this.all.push(body);
+      // The chunks fall as a tight VOLLEY, not spread evenly over the cycle.
+      // Spacing them by i/count means a chute with four chunks rains more or
+      // less continuously (each fall takes about as long as the spacing), so
+      // there is never the clear window the hazard is supposed to be read on.
+      // Bunched into the first fifth of the period, the rest of the cycle is
+      // genuinely safe — which is the whole design.
       this.movers.push({
         kind: 'rock', body, x: cx, topY, groundY,
-        period, phase: phase + i / count, cycle: null,
+        period, phase: phase + (i / count) * 0.2, cycle: null,
       });
       chunks.push({ body, color });
     }
@@ -533,7 +684,7 @@ export class Obstacles {
   // crane lift (parks at road level, travels to a hold target while ridden,
   // springs back once clear) — just with the ridden target BELOW road level.
   _elevator({ x0, y0, w, drop }) {
-    const platform = Bodies.rectangle(x0 + w / 2, y0 + 11, w - 8, 22, {
+    const platform = Bodies.rectangle(x0 + w / 2, y0 + 11, w, 22, {
       isStatic: true, friction: 1.0, label: 'terrain',
     });
     this.all.push(platform);
@@ -663,30 +814,54 @@ export class Obstacles {
     }
   }
 
+  // Oil reads as oil because of the SHEEN — that iridescent film is the one
+  // thing everybody recognises, and it can carry the direction too. Warm gold
+  // bands streaming forward mean the slick throws you along; cold violet-red
+  // bands streaming backward mean it fights you. No arrow decals: the film
+  // itself is the signage.
   _renderOil(ctx, { x0, groundY, w, push }) {
+    const t = this.engine.timing.timestamp / 1000;
+    const cx = x0 + w / 2, dir = push > 0 ? 1 : -1;
     ctx.save();
-    // Puddle
+
+    // Puddle: three overlapping pools, so the edge is irregular like spill.
+    ctx.fillStyle = '#14161c';
+    for (const [ox, rx, ry] of [[0, w / 2, 12], [-w * 0.22, w / 3.4, 8], [w * 0.24, w / 3.8, 9]]) {
+      ctx.beginPath();
+      ctx.ellipse(cx + ox, groundY - 4, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Sheen bands drifting the way the slick pushes.
+    const bands = push > 0
+      ? ['#ffd05e', '#8ee6c0', '#6fb6ff']
+      : ['#ff6a5a', '#c86bd6', '#6a7bff'];
+    ctx.save();
     ctx.beginPath();
-    ctx.ellipse(x0 + w / 2, groundY - 3, w / 2, 11, 0, 0, Math.PI * 2);
-    ctx.fillStyle = '#181b22';
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(x0 + w / 2, groundY - 6, w / 2.6, 5, 0, 0, Math.PI * 2);
-    ctx.fillStyle = '#2e3644';
-    ctx.fill();
-    // Direction chevrons: gold = boost, red = shove-back
-    ctx.strokeStyle = push > 0 ? '#e8c34a' : '#e05548';
+    ctx.ellipse(cx, groundY - 4, w / 2 - 3, 11, 0, 0, Math.PI * 2);
+    ctx.clip();
     ctx.lineWidth = 4;
     ctx.lineCap = 'round';
-    const dir = push > 0 ? 1 : -1;
-    for (let i = 0; i < 3; i++) {
-      const cx = x0 + w / 2 + (i - 1) * 34;
+    const span = w + 90;
+    for (let i = 0; i < 7; i++) {
+      const phase = (t * 34 * dir + i * 46) % span;
+      const bx = dir > 0 ? x0 - 45 + phase : x0 + w + 45 - phase;
+      ctx.globalAlpha = 0.55;
+      ctx.strokeStyle = bands[i % bands.length];
       ctx.beginPath();
-      ctx.moveTo(cx - 7 * dir, groundY - 12);
-      ctx.lineTo(cx + 5 * dir, groundY - 6);
-      ctx.lineTo(cx - 7 * dir, groundY);
+      ctx.moveTo(bx - 16 * dir, groundY - 11);
+      ctx.quadraticCurveTo(bx + 6 * dir, groundY - 4, bx - 16 * dir, groundY + 3);
       ctx.stroke();
     }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+
+    // A thin bright rim so the puddle edge separates from dark tarmac.
+    ctx.strokeStyle = push > 0 ? 'rgba(255, 208, 94, 0.55)' : 'rgba(255, 106, 90, 0.55)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.ellipse(cx, groundY - 4, w / 2, 12, 0, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -754,40 +929,87 @@ export class Obstacles {
   }
 
   _renderBall(ctx, { ax, ay, ball, r, spiky }) {
+    const bx = ball.position.x, by = ball.position.y;
+    const dx = bx - ax, dy = by - ay;
+    const dist = Math.hypot(dx, dy) || 1;
+    const ux = dx / dist, uy = dy / dist;
     ctx.save();
-    // Crane stub the cable hangs from
-    ctx.fillStyle = '#3c414b';
-    ctx.fillRect(ax - 26, ay - 18, 52, 18);
-    // Cable
-    ctx.strokeStyle = '#494f59';
-    ctx.lineWidth = 5;
+
+    // Mount: a gantry head for the crane ball, a masonry corbel + iron ring
+    // for the castle flail — either way the chain visibly hangs from
+    // something, and the pivot itself is drawn so the arc reads.
+    if (spiky) {
+      ctx.fillStyle = texPattern('stone', '#7e788c', 170) || '#5c5570';
+      ctx.fillRect(ax - 40, ay - 44, 80, 32);
+      ctx.fillStyle = '#3f3a4c';
+      ctx.fillRect(ax - 30, ay - 14, 60, 10);
+    } else {
+      ctx.fillStyle = '#3c414b';
+      ctx.fillRect(ax - 34, ay - 24, 68, 24);
+      ctx.fillStyle = '#e8c34a';                       // hazard band on the head
+      ctx.fillRect(ax - 34, ay - 8, 68, 5);
+    }
+    // Swivel pin
     ctx.beginPath();
-    ctx.moveTo(ax, ay);
-    ctx.lineTo(ball.position.x, ball.position.y);
-    ctx.stroke();
+    ctx.arc(ax, ay, 8, 0, Math.PI * 2);
+    ctx.fillStyle = '#20232a';
+    ctx.fill();
+
+    // Chain: real interlocking links along the swing line, so the tether
+    // reads as chain rather than a drawn stroke.
+    const links = Math.max(3, Math.round(dist / 26));
+    const step = dist / links;
+    ctx.lineWidth = 4;
+    for (let i = 0; i < links; i++) {
+      const cx = ax + ux * step * (i + 0.5);
+      const cy = ay + uy * step * (i + 0.5);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(Math.atan2(uy, ux));
+      ctx.strokeStyle = i % 2 ? '#5d6470' : '#454b57';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, step * 0.52, i % 2 ? 5.5 : 4, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Spikes (drawn under the ball so their bases are hidden)
     if (spiky) {
-      ctx.fillStyle = '#22252b';
       for (let k = 0; k < 8; k++) {
         const a = (k / 8) * Math.PI * 2 + ball.angle;
-        const tx = ball.position.x + Math.cos(a) * (r + 13);
-        const ty = ball.position.y + Math.sin(a) * (r + 13);
         ctx.beginPath();
-        ctx.moveTo(ball.position.x + Math.cos(a + 0.3) * (r - 2), ball.position.y + Math.sin(a + 0.3) * (r - 2));
-        ctx.lineTo(tx, ty);
-        ctx.lineTo(ball.position.x + Math.cos(a - 0.3) * (r - 2), ball.position.y + Math.sin(a - 0.3) * (r - 2));
+        ctx.moveTo(bx + Math.cos(a + 0.3) * (r - 2), by + Math.sin(a + 0.3) * (r - 2));
+        ctx.lineTo(bx + Math.cos(a) * (r + 14), by + Math.sin(a) * (r + 14));
+        ctx.lineTo(bx + Math.cos(a - 0.3) * (r - 2), by + Math.sin(a - 0.3) * (r - 2));
         ctx.closePath();
+        ctx.fillStyle = '#22252b';
+        ctx.fill();
+        // Bright tip so the reach of the spikes is legible against dark stone
+        ctx.beginPath();
+        ctx.moveTo(bx + Math.cos(a + 0.12) * (r + 4), by + Math.sin(a + 0.12) * (r + 4));
+        ctx.lineTo(bx + Math.cos(a) * (r + 14), by + Math.sin(a) * (r + 14));
+        ctx.lineTo(bx + Math.cos(a - 0.12) * (r + 4), by + Math.sin(a - 0.12) * (r + 4));
+        ctx.closePath();
+        ctx.fillStyle = '#9aa2b0';
         ctx.fill();
       }
     }
-    // Ball
+    // Ball: iron sphere with a rim shadow and a highlight
     ctx.beginPath();
-    ctx.arc(ball.position.x, ball.position.y, r, 0, Math.PI * 2);
+    ctx.arc(bx, by, r, 0, Math.PI * 2);
     ctx.fillStyle = spiky ? '#2a2d34' : '#33363d';
     ctx.fill();
+    ctx.strokeStyle = '#15171b';
+    ctx.lineWidth = 3;
+    ctx.stroke();
     ctx.beginPath();
-    ctx.arc(ball.position.x - r * 0.3, ball.position.y - r * 0.35, r * 0.32, 0, Math.PI * 2);
+    ctx.arc(bx - r * 0.3, by - r * 0.35, r * 0.32, 0, Math.PI * 2);
     ctx.fillStyle = '#5a606b';
+    ctx.fill();
+    // Shackle where the chain meets the ball
+    ctx.beginPath();
+    ctx.arc(bx - ux * r, by - uy * r, 6, 0, Math.PI * 2);
+    ctx.fillStyle = '#20232a';
     ctx.fill();
     ctx.restore();
   }
@@ -842,8 +1064,20 @@ export class Obstacles {
     ctx.restore();
   }
 
-  _renderBeam(ctx, { body, h }) {
+  // Standing timber. A bare rectangle read as scenery; this one reads as a
+  // thing that is MEANT to be knocked over: it sits in a stone socket at the
+  // road, wears iron bands and a battered ram-plate on the face you hit, and
+  // leans visibly once it has been shoved.
+  _renderBeam(ctx, { body, h, groundY, x }) {
+    const upright = Math.abs(Math.cos(body.angle)) > 0.94 && body.plugin.felled !== true;
     ctx.save();
+    // Stone socket / footing it stands in, drawn on the road line.
+    ctx.fillStyle = texPattern('stone', '#8a8496', 150) || '#5c5570';
+    ctx.fillRect(x - 30, groundY - 16, 60, 20);
+    ctx.strokeStyle = '#2a2534';
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(x - 30, groundY - 16, 60, 20);
+
     ctx.translate(body.position.x, body.position.y);
     ctx.rotate(body.angle);
     ctx.fillStyle = texUpright('wood', '#a8794a', 140, body.angle) || '#8a6b42';
@@ -851,50 +1085,96 @@ export class Obstacles {
     ctx.strokeStyle = '#3d2c15';
     ctx.lineWidth = 3;
     ctx.strokeRect(-13, -h / 2, 26, h);
-    // Iron bands
+    // Iron bands along the length (a banded ram-post, not a plank)
     ctx.fillStyle = '#565b66';
-    ctx.fillRect(-13, -h / 2 + 10, 26, 10);
-    ctx.fillRect(-13, h / 2 - 20, 26, 10);
+    for (const by of [-h / 2 + 10, -h / 6, h / 6, h / 2 - 20]) {
+      ctx.fillRect(-14, by, 28, 10);
+      ctx.fillStyle = '#7d8798';
+      ctx.fillRect(-14, by, 28, 3);
+      ctx.fillStyle = '#565b66';
+    }
+    // Battered ram-plate low on the strike face: the "hit me here" cue.
+    ctx.fillStyle = '#7d8798';
+    ctx.fillRect(-16, h / 2 - 74, 6, 44);
+    ctx.fillStyle = '#3d2c15';
+    ctx.fillRect(-16, h / 2 - 62, 6, 4);
+    ctx.fillRect(-16, h / 2 - 48, 6, 3);
+    // Weathered cap while it still stands
+    if (upright) {
+      ctx.fillStyle = '#4a3520';
+      ctx.fillRect(-15, -h / 2 - 5, 30, 7);
+    }
     ctx.restore();
   }
 
-  _renderArrows(ctx, { x, w, groundY, topY, period, phase, rainFrac }) {
-    const t = this.engine.timing.timestamp / 1000;
+  // Archer wall. The gallery is a fortress hoarding: a corbelled stone box
+  // projecting from a curtain wall that carries on up out of frame — so it
+  // reads as ARCHITECTURE, not a bar hanging in mid-air. The murder-holes in
+  // its floor are where the (real, physical) arrows come from.
+  _renderArrows(ctx, { x, w, groundY, topY, period, phase, mover }) {
+    const now = this.engine.timing.timestamp;
+    const t = now / 1000;
     const p = ((t / period + phase) % 1 + 1) % 1;
+    const x0 = x - w / 2 - 26, wW = w + 52;
+    const stone = texPattern('stone', '#8a8496', 190);
+    const stoneDark = texPattern('stone', '#5f5a70', 190);
     ctx.save();
-    // Murder-hole ledge the volleys come from
-    ctx.fillStyle = '#3a3444';
-    ctx.fillRect(x - w / 2 - 12, topY - 16, w + 24, 16);
-    ctx.fillStyle = '#1d1826';
-    for (let sx = x - w / 2 + 8; sx + 12 < x + w / 2; sx += 28) {
-      ctx.fillRect(sx, topY - 13, 12, 10);
+
+    // Spent shafts standing in the road, fading out (drawn first: underfoot).
+    // Same drawing as the ones still falling — a landed arrow has to be
+    // recognisably the object that just went past your windscreen, and the old
+    // two-line sketch wasn't.
+    ctx.save();
+    ctx.beginPath();                     // nothing below the road line draws:
+    ctx.rect(x - w, groundY - 900, w * 2, 900);   // the head is buried, not lying on top
+    ctx.clip();
+    for (const sp of mover.spent) {
+      const age = (now - sp.at) / 1000;
+      if (age > 3.2) continue;
+      drawArrow(ctx, sp.x, sp.y - ARROW_TIP + 12, sp.tilt || 0, Math.max(0, 1 - age / 3.2) * 0.9);
     }
-    if (p < rainFrac) {
-      // Falling arrow columns
-      const span = groundY - topY;
-      ctx.strokeStyle = '#cfd4dc';
-      ctx.fillStyle = '#cfd4dc';
-      ctx.lineWidth = 2.5;
-      for (let k = 0; k < Math.floor(w / 24); k++) {
-        const ax = x - w / 2 + 12 + k * 24;
-        const ay = topY + ((t * 620 + k * 133) % span);
-        ctx.beginPath();
-        ctx.moveTo(ax, ay - 24);
-        ctx.lineTo(ax, ay);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(ax - 4, ay);
-        ctx.lineTo(ax + 4, ay);
-        ctx.lineTo(ax, ay + 9);
-        ctx.closePath();
-        ctx.fill();
-      }
-    } else if (p > 1 - 0.1 / period) {
-      // Glint in the slits just before the next volley
-      ctx.fillStyle = 'rgba(255, 220, 140, 0.7)';
-      for (let sx = x - w / 2 + 8; sx + 12 < x + w / 2; sx += 28) {
-        ctx.fillRect(sx + 3, topY - 11, 6, 6);
-      }
+    ctx.restore();
+
+    // Curtain wall rising out of frame above the gallery.
+    ctx.fillStyle = stoneDark || '#463f55';
+    ctx.fillRect(x0 + 16, topY - 900, wW - 32, 900 - 54);
+    // Corbels: the stepped brackets the hoarding rests on.
+    ctx.fillStyle = stone || '#5c5570';
+    for (let i = 0; i <= 3; i++) {
+      const inset = i * 7;
+      ctx.fillRect(x0 + inset, topY - 54 + i * 10, wW - inset * 2, 11);
+    }
+    // The gallery floor itself (the murder-hole deck).
+    ctx.fillStyle = stone || '#665f7a';
+    ctx.fillRect(x0, topY - 22, wW, 24);
+    ctx.strokeStyle = '#241f30';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x0, topY - 22, wW, 24);
+    // Murder-holes: one per arrow, aligned with where the shafts drop.
+    for (const a of mover.arrows) {
+      ctx.fillStyle = '#120e1a';
+      ctx.fillRect(a.plugin.homeX - 6, topY - 19, 12, 18);
+    }
+    // Crenellated parapet above the gallery + arrow slits in the wall face.
+    ctx.fillStyle = stone || '#5c5570';
+    ctx.fillRect(x0 + 10, topY - 118, wW - 20, 22);
+    ctx.fillStyle = '#2b2536';
+    for (let sx = x0 + 26; sx + 16 < x0 + wW - 20; sx += 46) {
+      ctx.fillRect(sx, topY - 112, 9, 40);        // arrow slit
+      ctx.fillRect(sx - 4, topY - 98, 17, 7);     // cross-slit
+    }
+    // Torch glow behind each slit: full while loosing, a bright flare in the
+    // last third of a second before the volley (the tell), dim otherwise.
+    ctx.globalAlpha = mover.raining ? 0.9 : p > 1 - 0.35 / period ? 1 : 0.25;
+    ctx.fillStyle = '#ffb547';
+    for (let sx = x0 + 26; sx + 16 < x0 + wW - 20; sx += 46) {
+      ctx.fillRect(sx + 1, topY - 106, 6, 22);
+    }
+    ctx.globalAlpha = 1;
+
+    // The arrows in flight.
+    for (const a of mover.arrows) {
+      if (!a.isStatic) drawArrow(ctx, a.position.x, a.position.y, 0, 1);
     }
     ctx.restore();
   }
@@ -1143,37 +1423,61 @@ export class Obstacles {
     ctx.restore();
   }
 
-  _renderBouncer(ctx, { x, groundY, w, h }) {
+  // A pit of old tires with the crown standing proud. Drawn as the SURFACE
+  // you interact with rather than a pile of donuts: worn crowns, a dark
+  // recess behind them, and one taut highlight across the top that says the
+  // thing is springy. The hubs and per-tire detail the old version had were
+  // invisible at speed and just made it read as gravel.
+  _renderBouncer(ctx, { x, groundY, w, h, crown = 20 }) {
+    const x0 = x - w / 2, top = groundY - crown;
     ctx.save();
-    const rows = 3, rowH = h / rows;
-    const perRow = Math.max(2, Math.round(w / 52));
-    const tw = w / perRow;
-    for (let r = 0; r < rows; r++) {
-      const cy = groundY - rowH * (r + 0.5);
-      const off = (r % 2) * (tw / 2);
-      for (let i = 0; i < perRow; i++) {
-        const cx = x - w / 2 + off + tw * (i + 0.5);
-        if (cx - tw / 2 < x - w / 2 - 4 || cx + tw / 2 > x + w / 2 + 4) continue;
+
+    // The hollow it's seated in: a dark rubber-lined scoop cut into the road,
+    // with the spoil banked either side. This is what stops the stack reading
+    // as a block someone left standing in the middle of the track.
+    ctx.fillStyle = '#15171b';
+    ctx.beginPath();
+    ctx.ellipse(x, groundY + 6, w / 2 + 16, 22, 0, Math.PI, 0);
+    ctx.fill();
+    ctx.fillRect(x0 - 16, groundY + 4, w + 32, 20);
+
+    // Tire courses. Wide, few, chunky — the old version's per-tire hubs were
+    // invisible at speed and just made the thing read as gravel.
+    const per = Math.max(2, Math.round(w / 58));
+    const tw = w / per;
+    for (const [row, off] of [[2, tw / 2], [1, 0], [0, tw / 2]]) {
+      const cy = top + 10 + (2 - row) * 21;
+      for (let i = 0; i < per + (off ? 1 : 0); i++) {
+        const cx = x0 + off * -1 + tw * (i + 0.5);
+        if (cx < x0 - 8 || cx > x0 + w + 8) continue;
         ctx.beginPath();
-        ctx.ellipse(cx, cy, tw / 2 - 2, rowH / 2 - 1, 0, 0, Math.PI * 2);
-        ctx.fillStyle = '#23262b';
+        ctx.ellipse(cx, cy, tw / 2 + 1, 15, 0, 0, Math.PI * 2);
+        ctx.fillStyle = row === 0 ? '#2a2e35' : row === 1 ? '#22262c' : '#1b1e23';
         ctx.fill();
-        ctx.strokeStyle = '#0f1114';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = '#0d0f12';
+        ctx.lineWidth = 2.5;
         ctx.stroke();
-        // Hub
-        ctx.beginPath();
-        ctx.ellipse(cx, cy, tw / 5, rowH / 5, 0, 0, Math.PI * 2);
-        ctx.fillStyle = '#3a3f47';
-        ctx.fill();
+        if (row === 0) {                  // tread notches, top course only
+          ctx.strokeStyle = '#3d434c';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          for (let k = -1; k <= 1; k++) {
+            ctx.moveTo(cx + k * (tw / 4), cy - 9);
+            ctx.lineTo(cx + k * (tw / 4), cy + 9);
+          }
+          ctx.stroke();
+        }
       }
     }
-    // Warning paint on the top row
+
+    // The one accessory: a taut highlight across the crown. It is the whole
+    // message of the prop — this surface gives.
     ctx.strokeStyle = '#e8c34a';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(x - w / 2 + 8, groundY - h + 3);
-    ctx.lineTo(x + w / 2 - 8, groundY - h + 3);
+    ctx.moveTo(x0 + 10, top + 2);
+    ctx.quadraticCurveTo(x, top - 7, x0 + w - 10, top + 2);
     ctx.stroke();
     ctx.restore();
   }
@@ -1397,37 +1701,78 @@ export class Obstacles {
     ctx.restore();
   }
 
+  // A real belt: steel frame, two drums, and cleats running over the top.
+  // The drums SPIN at the belt's own speed — motion that comes out of the
+  // mechanism reads as machinery, where the old sliding chevrons read as an
+  // arrow decal someone stuck on the floor.
   _renderConveyor(ctx, { x0, groundY, w, speed }) {
     const t = this.engine.timing.timestamp / 1000;
+    const R = 14;
+    const cy = groundY - 5;            // drum centres
+    const top = cy - R;
     ctx.save();
-    ctx.fillStyle = texPattern('concrete', '#3a3f47', 150) || '#33373d';
-    ctx.fillRect(x0, groundY - 16, w, 20);
-    // Rollers at both ends
-    for (const rx of [x0, x0 + w]) {
+
+    // Frame rails under the belt run
+    ctx.fillStyle = '#454b57';
+    ctx.fillRect(x0 + 8, cy + 2, w - 16, 12);
+    ctx.fillStyle = '#2b2e35';
+    for (let lx = x0 + 26; lx < x0 + w - 20; lx += 68) ctx.fillRect(lx, cy + 12, 9, 16);
+
+    // Belt band wrapping the two drums
+    ctx.fillStyle = '#22252b';
+    ctx.beginPath();
+    ctx.moveTo(x0, top);
+    ctx.lineTo(x0 + w, top);
+    ctx.arc(x0 + w, cy, R, -Math.PI / 2, Math.PI / 2);
+    ctx.lineTo(x0, cy + R);
+    ctx.arc(x0, cy, R, Math.PI / 2, -Math.PI / 2);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cleats riding the top face, scrolling at belt speed
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0, top - 1, w, R + 1);
+    ctx.clip();
+    const spacing = 40;
+    const scroll = ((t * speed * 26) % spacing + spacing) % spacing;
+    for (let cx = x0 - spacing + scroll; cx < x0 + w + spacing; cx += spacing) {
+      ctx.fillStyle = '#3d434c';
+      ctx.fillRect(cx, top, 13, 9);
+      ctx.fillStyle = '#e8c34a';
+      ctx.fillRect(cx, top, 13, 3);
+    }
+    ctx.restore();
+
+    // Drums. Spokes turn with the belt, so direction and speed are readable
+    // from the machine itself rather than from a symbol.
+    const ang = t * speed * 0.6;
+    for (const dx of [x0, x0 + w]) {
       ctx.beginPath();
-      ctx.arc(rx, groundY - 6, 12, 0, Math.PI * 2);
+      ctx.arc(dx, cy, R, 0, Math.PI * 2);
+      ctx.fillStyle = '#6a7181';
+      ctx.fill();
+      ctx.strokeStyle = '#20232a';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(dx, cy);
+      ctx.rotate(ang);
+      ctx.strokeStyle = '#2b2e35';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let k = 0; k < 3; k++) {
+        const a = (k / 3) * Math.PI;
+        ctx.moveTo(-Math.cos(a) * (R - 3), -Math.sin(a) * (R - 3));
+        ctx.lineTo(Math.cos(a) * (R - 3), Math.sin(a) * (R - 3));
+      }
+      ctx.stroke();
+      ctx.restore();
+      ctx.beginPath();
+      ctx.arc(dx, cy, 3.5, 0, Math.PI * 2);
       ctx.fillStyle = '#20232a';
       ctx.fill();
     }
-    // Moving chevrons show direction + relative speed
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(x0, groundY - 16, w, 20);
-    ctx.clip();
-    const dir = speed >= 0 ? 1 : -1;
-    const spacing = 34;
-    const scroll = ((t * speed * 20) % spacing + spacing) % spacing;
-    ctx.strokeStyle = '#e8c34a';
-    ctx.lineWidth = 4;
-    ctx.lineCap = 'round';
-    for (let cx = x0 - spacing + scroll; cx < x0 + w + spacing; cx += spacing) {
-      ctx.beginPath();
-      ctx.moveTo(cx - 8 * dir, groundY - 14);
-      ctx.lineTo(cx + 8 * dir, groundY - 6);
-      ctx.lineTo(cx - 8 * dir, groundY + 2);
-      ctx.stroke();
-    }
-    ctx.restore();
     ctx.restore();
   }
 

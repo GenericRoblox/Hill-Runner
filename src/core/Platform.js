@@ -19,6 +19,10 @@ class Platform {
     this.ready = false;
     this.storage = localStore;
     this._inGameplay = false;
+    // True when the HOST SITE owns the audio toggle. The game hides its own
+    // mute control in that case rather than offering two switches that can
+    // disagree.
+    this.portalAudioControl = false;
   }
 
   // Awaited once at boot, before the first save read. Must never reject: a
@@ -47,6 +51,11 @@ class Platform {
   _gameplayStop() {}
 
   happytime() {}
+
+  // Called once after init(). `cb(muted)` fires with the host's current audio
+  // setting and again whenever it changes. No-op here: on the plain web build
+  // the only mute that exists is the player's own.
+  watchAudioSetting(_cb) {}
 
   // Resolves when the ad break is over, true if an ad actually played. Never
   // rejects — an adblocked or unfilled break must fall straight through into

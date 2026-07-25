@@ -14,7 +14,7 @@ import { renderTouchPedals } from '../ui/TouchControls.js';
 import { sound } from '../ui/Sound.js';
 import { music } from '../ui/Music.js';
 import { input } from '../core/InputManager.js';
-import { screens } from '../core/ScreenManager.js';
+import { screens, showLevelIntro } from '../core/ScreenManager.js';
 import { saveData } from '../core/SaveData.js';
 import { platform } from '../core/Platform.js';
 import { ads } from '../core/Breaks.js';
@@ -89,6 +89,24 @@ export class GameScreen {
     sound.startEngine();
     music.playNext(); // fades in a track different from whatever just played
     this._build();
+    this._showIntro();
+  }
+
+  // Route marker naming the level. Fired from enter() only — a retry is not a
+  // new place, and a card on every restart of a hard level would be noise.
+  _showIntro() {
+    if (this.custom) {
+      showLevelIntro({ icon: this.worldDef.icon, eyebrow: 'Created level', title: this.custom.name });
+      return;
+    }
+    // Level names carry their own number ("1. First Gear"); split it so the
+    // number can go on the shield and the name can stand on its own.
+    const m = /^\s*(\d+)\.\s*(.+)$/.exec(this.level.name || '');
+    showLevelIntro({
+      icon: `${this.levelIndex + 1}`,
+      eyebrow: `${this.worldDef.name} · Level ${m ? m[1] : this.levelIndex + 1}`,
+      title: m ? m[2] : this.level.name,
+    });
   }
 
   _build() {
@@ -222,7 +240,7 @@ export class GameScreen {
         this.car.smashed = true;
         this.camera.addShake(16);
         const by = this.car.crushedBy;
-        return this._fail(by === 'arrows' ? 'Skewered by the archers!'
+        return this._fail(by === 'arrow' ? 'Skewered by the archers!'
           : by === 'fireball' ? 'Torched by a fireball!'
           : by === 'blade' ? 'Diced by the spinning blade!'
           : by === 'compactor' ? 'Flattened by the compactor!'
@@ -811,7 +829,124 @@ export class GameScreen {
     for (const wall of this.level.walls) {
       ctx.save();
       ctx.translate(wall.cx, wall.cy);
-      if (wall.style === 'steel') {
+      if (wall.style === 'shed') {
+        // A drive-through machine shed, seen with its near side cut away.
+        //
+        // Two rules do all the work here. First, the POSTS RUN THE WHOLE WAY
+        // UP — ground to eave — and the roof lands on top of them, so the
+        // structure is visibly carried; the first version stopped the posts at
+        // the header and left the roof floating with nothing under it.
+        // Second, almost nothing else is drawn: at 60 km/h you read a
+        // silhouette and a dark hole, not board seams and hay bales. What is
+        // left is a pitched roof, two posts, a header, and one warm seam of
+        // daylight under the ridge.
+        //
+        // Everything sits BEHIND the car on purpose — you're threading a low
+        // clearance, and foreground structure at that moment is unplayable.
+        const hw = wall.w / 2, hh = wall.h / 2;
+        const gy = (wall.groundY ?? wall.cy + 170) - wall.cy;  // road, in wall-local coords
+        const POST = 26, EAVE = 30, RIDGE = 66, DECK = 13;
+        const postTop = -hh - 34;                    // where the roof sits down onto the posts
+        const inX = hw - POST;
+
+        // Interior: one flat dark box with a few wide board seams. That is the
+        // whole back wall.
+        ctx.fillStyle = '#1d1610';
+        ctx.fillRect(-inX, postTop, inX * 2, gy - postTop);
+        ctx.fillStyle = texPattern('wood', '#5e3327', 150) || '#3b2119';
+        ctx.fillRect(-inX, -hh - 8, inX * 2, gy + hh + 8);
+        ctx.fillStyle = 'rgba(12, 8, 5, 0.55)';
+        for (let bx = -inX + 34; bx < inX - 6; bx += 46) ctx.fillRect(bx, -hh - 8, 4, gy + hh + 8);
+        const shade = ctx.createLinearGradient(0, -hh, 0, gy);
+        shade.addColorStop(0, 'rgba(14, 9, 6, 0.66)');
+        shade.addColorStop(1, 'rgba(14, 9, 6, 0.2)');
+        ctx.fillStyle = shade;
+        ctx.fillRect(-inX, -hh - 8, inX * 2, gy + hh + 8);
+
+        // The one accessory: daylight in the gap under the ridge. It says
+        // "this is an enclosure with a roof on it" in a single stroke.
+        ctx.fillStyle = '#ffcf82';
+        ctx.fillRect(-inX, postTop, inX * 2, 7);
+        ctx.fillStyle = 'rgba(255, 207, 130, 0.22)';
+        ctx.fillRect(-inX, postTop + 7, inX * 2, 22);
+
+        // Posts: ground to eave, both of them, carrying the roof.
+        const timber = texPattern('wood', '#b08050', 130) || '#8a6b42';
+        for (const px of [-hw, hw - POST]) {
+          ctx.fillStyle = timber;
+          ctx.fillRect(px, postTop, POST, gy - postTop);
+          ctx.strokeStyle = '#4a3520';
+          ctx.lineWidth = 2.5;
+          ctx.strokeRect(px, postTop, POST, gy - postTop);
+          ctx.fillStyle = '#8d8577';                 // concrete footing
+          ctx.fillRect(px - 5, gy - 9, POST + 10, 11);
+        }
+
+        // Header beam. This rectangle IS the collider, and its lit underside
+        // is the lowest point — the one thing the player has to judge.
+        ctx.fillStyle = texPattern('wood', '#dcaeaf', 150) || '#a8804e';
+        ctx.fillRect(-hw, -hh, wall.w, wall.h);
+        ctx.strokeStyle = '#4a3520';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(-hw, -hh, wall.w, wall.h);
+        ctx.fillStyle = '#ffe9bd';
+        ctx.fillRect(-hw, hh - 5, wall.w, 5);
+
+        // Roof: a shallow gable resting ON the post tops. The deck is drawn as
+        // one closed shape with the fascia along its bottom edge, so it reads
+        // as a lid sitting on the frame rather than a slab hovering over it.
+        const l = -hw - EAVE, r = hw + EAVE, eaveY = postTop + 4;
+        ctx.beginPath();
+        ctx.moveTo(l, eaveY);
+        ctx.lineTo(0, eaveY - RIDGE);
+        ctx.lineTo(r, eaveY);
+        ctx.lineTo(r, eaveY + DECK);
+        ctx.lineTo(0, eaveY - RIDGE + DECK);
+        ctx.lineTo(l, eaveY + DECK);
+        ctx.closePath();
+        ctx.fillStyle = '#7f8791';
+        ctx.fill();
+        ctx.strokeStyle = '#474d55';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.strokeStyle = '#5f666f';                 // corrugation, following the pitch
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        for (let k = 1; k < 9; k++) {
+          const f = k / 9;
+          for (const sgn of [-1, 1]) {
+            const rx = sgn * (hw + EAVE) * f;
+            const ry = eaveY - RIDGE * (1 - f);
+            ctx.moveTo(rx, ry + 2);
+            ctx.lineTo(rx, ry + DECK - 2);
+          }
+        }
+        ctx.stroke();
+        ctx.fillStyle = '#3d2c1c';                   // ridge cap
+        ctx.fillRect(-13, eaveY - RIDGE - 3, 26, 8);
+      } else if (wall.style === 'gantry') {
+        // Low overhead beam = the soffit of an overpass. Columns run UP out
+        // of frame from both ends (never down across the lane), so the beam
+        // reads as carried structure instead of a bar hanging in mid-air.
+        const hw = wall.w / 2, hh = wall.h / 2;
+        ctx.fillStyle = texPattern('concrete', '#6b7280', 200) || '#5a616c';
+        for (const s of [-1, 1]) ctx.fillRect(s * hw - (s < 0 ? 0 : 30), -hh - 620, 30, 620);
+        // Haunches where the columns meet the beam
+        ctx.beginPath();
+        ctx.moveTo(-hw, -hh); ctx.lineTo(-hw + 62, -hh); ctx.lineTo(-hw, -hh - 46);
+        ctx.moveTo(hw, -hh); ctx.lineTo(hw - 62, -hh); ctx.lineTo(hw, -hh - 46);
+        ctx.fill();
+        // The beam itself, with a hazard-striped underside
+        ctx.fillStyle = texPattern('concrete', '#7d838f', 200) || '#666d78';
+        ctx.fillRect(-hw, -hh, wall.w, wall.h);
+        ctx.strokeStyle = '#2b2e35';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(-hw, -hh, wall.w, wall.h);
+        for (let sx = 0, i = 0; sx < wall.w; sx += 26, i++) {
+          ctx.fillStyle = i % 2 ? '#2b2e35' : '#e8c34a';
+          ctx.fillRect(-hw + sx, hh - 8, Math.min(26, wall.w - sx), 8);
+        }
+      } else if (wall.style === 'steel') {
         // Riveted plate (Factory elevator guards etc.) — the wood-plank
         // default would clash with industrial set-pieces.
         ctx.fillStyle = texPattern('concrete', '#5a616c', 170) || '#4c525c';

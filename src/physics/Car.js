@@ -352,8 +352,17 @@ export class Car {
     // bounces high and repeated bounces build height (a stalled car can
     // trampoline its way up). Tilted slightly forward like the updraft so a
     // dead-stop car still drifts toward the ledge instead of pogoing in place.
+    //
+    // It fires on any contact with the DECK, and never on the flank. Always
+    // firing on top is load-bearing — it is what lets a stalled car trampoline
+    // out of a basin instead of sitting there forever — but the old rule fired
+    // wherever you touched the stack, so clipping its side threw you skyward
+    // for no visible reason. Comparing the chassis against the pad's top edge
+    // separates "riding it" from "shouldering it" cleanly: on the deck the
+    // chassis sits well above that line, against the flank it sits below.
     const bouncer = zoneRef('Bouncer');
-    if (bouncer && now > this.bounceReadyAt) {
+    const onDeck = bouncer && this.chassis.position.y < bouncer.bounds.min.y + 14;
+    if (onDeck && now > this.bounceReadyAt) {
       const impact = Math.max(0, this.prevVelY);
       const vy = Math.min(16.5, 6 + impact * 1.05);
       Body.setVelocity(this.chassis, { x: this.chassis.velocity.x + vy * 0.15, y: -vy });

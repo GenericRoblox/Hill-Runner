@@ -17,27 +17,33 @@ export class PhysicsWorld {
       canopy: 'Canopy', oil: 'Oil', updraft: 'Updraft', water: 'Water', molten: 'Molten',
       bouncer: 'Bouncer', spikes: 'Spikes', sludge: 'Sludge', conveyor: 'Conveyor', spring: 'Spring',
     };
-    // A wrecking ball/flail kills only when the BALL is swinging into the
-    // victim (its velocity toward the car > 4 px/step). Driving into a slow
-    // ball, or catching up to one swinging away, is a heavy shove instead —
-    // the ball is ~5x the car's mass, so it still hurts your run.
+    // A wrecking ball/flail kills on CLOSING SPEED — how fast the gap between
+    // ball and car is shutting, counting both bodies' motion. So it's lethal
+    // whether the ball swings into a parked car OR the car drives hard into a
+    // hanging one; what survives is a low-energy touch. Catching up to a ball
+    // swinging away is still safe (the gap is opening, not closing), which is
+    // deliberate: a car crossing behind a swing outruns the ball and would
+    // otherwise die rear-ending it.
+    const CLOSING_KILL = 4.5; // px/step
     const ballStrike = (ball, other) => {
       const dx = other.position.x - ball.position.x;
       const dy = other.position.y - ball.position.y;
       const d = Math.hypot(dx, dy) || 1;
-      return (ball.velocity.x * dx + ball.velocity.y * dy) / d > 2;
+      const rvx = ball.velocity.x - other.velocity.x;
+      const rvy = ball.velocity.y - other.velocity.y;
+      return (rvx * dx + rvy * dy) / d > CLOSING_KILL;
     };
     // Other lethal contacts: presses (and the bigger Factory compactors)
-    // while descending, rockfall/scrap debris and fireballs while in flight
-    // (parked they're scenery), arrow volleys while raining, spinning
-    // Factory blades any time they're touched.
+    // while descending, rockfall/scrap debris, fireballs and loosed arrows
+    // while in flight (parked they're scenery), spinning Factory blades any
+    // time they're touched.
     const lethal = (body, other) =>
       (body.label === 'ball' && ballStrike(body, other)) ||
       (body.label === 'press' && body.plugin.crushing) ||
       (body.label === 'compactor' && body.plugin.crushing) ||
       (body.label === 'debris' && !body.isStatic) ||
       (body.label === 'fireball' && !body.isStatic) ||
-      (body.label === 'arrows' && body.plugin.raining) ||
+      (body.label === 'arrow' && !body.isStatic) ||
       (body.label === 'blade');
     const markContact = (e) => {
       const now = this.engine.timing.timestamp;
