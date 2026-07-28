@@ -54,9 +54,12 @@ export class HomeScreen {
     if (!platform.portalAudioControl) col.appendChild(muteBtn);
     s.appendChild(col);
 
+    // Keep this in step with InputManager. It said "Esc = pause" long after
+    // Escape stopped pausing (it leaves fullscreen on the web, so it can't be
+    // a game key) — a control hint that lies is worse than no hint.
     s.appendChild(el('p', {
       class: 'hint',
-      text: 'D / → = gas · A / ← = brake & reverse · In the air: gas tips nose up, brake tips nose down · R = restart · Esc = pause',
+      text: 'D / → = gas · A / ← = brake & reverse · In the air: gas tips nose up, brake tips nose down · R = restart · P = pause',
     }));
     this.root.appendChild(s);
   }

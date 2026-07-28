@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>refresh-rate consistency test</title></head>
+<body>
+  <pre id="testlog"></pre>
+  <script src="lib/matter.min.js"></script>
+  <script type="module">
+    // CrazyGames requires the physics to behave the same on a 60Hz laptop and a
+    // 165Hz gaming monitor. The game loop feeds whatever frame time the browser
+    // gives it into a FIXED 60Hz accumulator, so this asserts the thing that
+    // guarantee rests on: drive the same level for the same amount of SIMULATED
+    // time at several frame rates and the car must end up in the same place.
+    //
+    // A frame-rate-dependent game fails this loudly — at 165Hz it would travel
+    // roughly 2.75x as far as at 60Hz.
+    import { PhysicsWorld } from './src/physics/PhysicsWorld.js';
+    import { Terrain } from './src/physics/Terrain.js';
+    import { Obstacles } from './src/physics/Obstacles.js';
+    import { Car } from './src/physics/Car.js';
+    import { getLevel } from './src/data/levels.js';
+    import { getStatsAtTiers } from './src/data/vehicles.js';
+
+    const log = [];
+    let failures = 0;
+    const ok = (cond, msg) => { log.push(`${cond ? 'PASS' : 'FAIL'}  ${msg}`); if (!cond) failures++; };
+
+    const STEP_MS = 1000 / 60;
+
+    // A stripped copy of GameScreen.update's accumulator — same clamp, same
+    // fixed step, same "read input once per frame" behaviour.
+    function driveFor(seconds, frameMs) {
+      const level = getLevel(1, 0);
+      const physics = new PhysicsWorld();
+      new Terrain(level, physics);
+      new Obstacles(level, physics);
+      const stats = getStatsAtTiers('pickup', { engine: 0, suspension: 0, tires: 0, brakes: 0 });
+      const car = new Car(stats, level.startX, level.startY);
+      car.addTo(physics);
+
+      let acc = 0;
+      const frames = Math.round((seconds * 1000) / frameMs);
+      for (let f = 0; f < frames; f++) {
+        acc = Math.min(acc + frameMs, STEP_MS * 5);
+        const input = { gas: true, brake: false };
+        while (acc >= STEP_MS) {
+          acc -= STEP_MS;
+          car.update(input, STEP_MS / 1000, physics.timestamp());
+          physics.step(STEP_MS);
+        }
+      }
+      const p = car.position();
+      return { x: p.x, y: p.y };
+    }
+
+    const RATES = [
+      [60, 1000 / 60],
+      [90, 1000 / 90],
+      [120, 1000 / 120],
+      [144, 1000 / 144],
+      [165, 1000 / 165],
+      [30, 1000 / 30],
+    ];
+
+    const SECONDS = 6;
+    const base = driveFor(SECONDS, RATES[0][1]);
+    log.push(`60Hz reference after ${SECONDS}s: x=${base.x.toFixed(1)} y=${base.y.toFixed(1)}`);
+    ok(base.x > 400, 'the reference run actually drove somewhere');
+
+    for (const [hz, ms] of RATES.slice(1)) {
+      const r = driveFor(SECONDS, ms);
+      const dx = Math.abs(r.x - base.x);
+      // The accumulator can be holding up to one un-run step when time is up,
+      // so a small tail difference is expected and harmless. Frame-rate
+      // DEPENDENCE would show up as tens of percent, not tens of pixels.
+      const drift = dx / Math.max(1, base.x) * 100;
+      ok(drift < 2, `${hz}Hz lands within 2% of 60Hz (x=${r.x.toFixed(1)}, drift ${drift.toFixed(2)}%)`);
+    }
+
+    log.push('');
+    log.push(failures ? `${failures} FAILURE(S)` : 'ALL PASS');
+    document.getElementById('testlog').textContent = log.join('\n');
+    document.title = failures ? 'FAIL' : 'PASS';
+  </script>
+</body>
+</html>

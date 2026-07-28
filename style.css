@@ -363,16 +363,27 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
 .tier-tag.price { color: var(--go-deep); }
 
 /* ---------- Overlays ---------- */
+/* The portal serves this game into iframes as short as 450px, and a results
+   board with three stars, a record line, a payout and three buttons is taller
+   than that. Flex-centring alone CLIPS the overflow at both ends — the bottom
+   button simply is not reachable, and body/overflow:hidden means there is
+   nothing to scroll. So the overlay scrolls, and the panel is centred with
+   `margin: auto` rather than `align-items`: auto margins centre it while it
+   fits and stop cropping the top the moment it doesn't, which is the failure
+   `align-items: center` has on an overflowing flex line. */
 .overlay {
   position: fixed; inset: 0;
   background: rgba(26, 55, 80, 0.55);
-  display: flex; align-items: center; justify-content: center;
+  display: flex; justify-content: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   z-index: 50;
   padding: 16px;
 }
 .overlay.hidden { display: none; }
 
 .panel {
+  margin: auto;
   background: var(--wood);
   background-size: 300px;
   border: 4px solid var(--ink);
@@ -382,6 +393,14 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
   text-align: center;
   box-shadow: 0 8px 0 var(--board-edge), 0 18px 30px rgba(10, 25, 40, 0.35);
   animation: panel-pop 0.32s cubic-bezier(0.2, 1.55, 0.4, 1) both;
+}
+
+/* Short iframes: pull the board in so it fits outright instead of scrolling.
+   Scrolling is the safety net, not the plan — a reviewer on an 800x450 frame
+   should see the whole board without being asked to discover that it moves. */
+@media (max-height: 560px) {
+  .overlay { padding: 8px; }
+  .panel { padding: 16px 18px; border-radius: 18px; }
 }
 @keyframes panel-pop {
   from { opacity: 0; transform: translateY(22px) scale(0.88); }
@@ -1122,10 +1141,39 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
 .coach-goal .cg-flag { font-family: 'Fredoka', sans-serif; font-size: 1.6rem; line-height: 1; }
 .coach-goal .cg-text { font-family: var(--display); font-size: 1.5rem; color: var(--ink); }
 
-/* On glass the two pedals ARE the screen halves, so they sit further apart and
-   gesture at the sides they stand for. */
-.coach.touch .coach-key { width: 66px; border-radius: 50%; padding: 10px 0 9px; }
-.coach.touch .coach-keys { gap: 46px; }
+/* Touch gets a different lesson, not a different skin. There is no button to
+   find on a phone — the whole LEFT HALF of the screen brakes and the whole
+   RIGHT HALF drives — and no player guesses that from two floating pedals. So
+   the hint becomes a little picture of the screen itself: one plate, split down
+   the middle, each side coloured and labelled for what it does. Holding fills
+   that side solid, so the picture confirms the zone under the thumb. */
+.coach.touch .coach-keys {
+  gap: 0;
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 0 4px 0 var(--board-edge);
+  overflow: hidden;
+}
+
+/* No `background` here on purpose. `.coach.touch .coach-key` and
+   `.coach-key.gas.on` carry the SAME specificity, so a background declared here
+   would win on source order alone and the pressed half would never fill —
+   which is the entire point of the hint. The base .coach-key colour is
+   inherited instead, leaving the .on rules free to override it. */
+.coach.touch .coach-key {
+  width: 92px;
+  padding: 11px 0 10px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.coach.touch .coach-key.brake { border-right: 3px solid var(--ink); }
+
+/* A screen doesn't depress — the fill alone carries the press here, and letting
+   half a plate drop away from the other half would break the illusion that this
+   IS the screen. */
+.coach.touch .coach-key.on { transform: none; }
 
 @keyframes coach-rise {
   from { opacity: 0; transform: translate(-50%, 60px); }
@@ -1139,9 +1187,48 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
 @media (max-width: 560px) {
   .coach { bottom: 3.5%; padding: 9px 15px 11px; gap: 5px; }
   .coach-key { width: 62px; }
-  .coach.touch .coach-key { width: 58px; }
-  .coach.touch .coach-keys { gap: 30px; }
+  .coach.touch .coach-key { width: 76px; padding: 9px 0 8px; }
   .coach-goal .cg-text { font-size: 1.25rem; }
+}
+
+/* ---------- Short iframes ----------
+   The portal serves this game into frames as short as 450px, and several of
+   these menus were authored against a full browser window: on an 800x450 frame
+   the world grid ran ~450px past the bottom and the upgrade screen ~660px, so
+   the first thing a reviewer saw was half a menu with no hint that it moved.
+   Nothing is restructured here — the layout is the same, but the spacing that
+   was tuned for a tall window is pulled in, which is enough to land the top of
+   every menu inside the frame. `max-height` (not width) is the right test:
+   these are wide, short frames, not phones. */
+@media (max-height: 560px) {
+  #menu-root { padding: max(10px, env(safe-area-inset-top)) 12px 18px; }
+  /* The grass bank is decoration; on a short frame it was eating a fifth of
+     the usable height before any content was drawn. */
+  #menu-root::after { height: 110px; bottom: -58px; }
+  .screen { padding-bottom: 78px; }
+
+  .screen h1 { font-size: clamp(2rem, 7vw, 3.1rem); margin: 2vh 0 6px; }
+  .screen .tagline { margin-bottom: 14px; padding: 4px 14px; font-size: 0.84rem; }
+  .topbar { margin-bottom: 11px; }
+
+  .btn { padding: 9px 16px; margin: 8px 0; font-size: 1.12rem; }
+  .btn.big { padding: 11px 16px; margin: 9px 0; gap: 12px; }
+  .btn.big .big-icon { font-size: 1.7rem; }
+  .btn.big .big-title { font-size: 1.3rem; }
+  .btn.big .big-sub { font-size: 0.75rem; }
+
+  .grid { gap: 11px; }
+  .card { padding: 11px; }
+  .card .icon { font-size: 1.7rem; margin-bottom: 4px; }
+  .card .veh-img { height: 56px; margin-bottom: 4px; }
+  .card h3 { font-size: 1.1rem; margin-bottom: 3px; }
+  .section-head { margin: 18px 0 11px; }
+
+  .upg-row { padding: 10px 12px; margin-bottom: 10px; }
+  .tier-grid { gap: 8px; margin-top: 7px; }
+  .tier-cell { padding: 6px 5px 5px; }
+  .tier-icon { width: 44px; height: 44px; }
+  .tier-icon.emoji { font-size: 1.7rem; line-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -72,12 +72,24 @@ class Coach {
     const el = document.createElement('div');
     el.className = `coach${this.touch ? ' touch' : ''}`;
     el.id = 'coach';
-    // Arrow keys on a keyboard, pedal triangles on glass — the glyph names the
-    // thing the player is actually looking for on their own device.
+    // The two devices need two different lessons, not one lesson in two skins.
+    //
+    // On a keyboard the question is WHICH KEY, so the hint is a pair of key
+    // caps carrying the arrows — an object the player recognises on the desk in
+    // front of them.
+    //
+    // On a phone the question is WHERE DO I PUT MY THUMB, and the answer is not
+    // guessable: there is no button, the whole left half of the screen brakes
+    // and the whole right half drives. So the touch hint is a little picture of
+    // the screen itself, split down the middle, with each side coloured and
+    // labelled for what it does. Two floating pedal discs (what this used to
+    // draw) showed the two ACTIONS but never taught the zones, which is the one
+    // thing a touch player cannot work out by looking.
     const back = this.touch ? '◀' : '←';
     const go = this.touch ? '▶' : '→';
+    const eyebrow = this.touch ? 'Hold either side' : 'Hold to drive';
     el.innerHTML = `
-      <span class="coach-eyebrow">Hold to drive</span>
+      <span class="coach-eyebrow">${eyebrow}</span>
       <div class="coach-keys">
         <div class="coach-key brake"><span class="ck-glyph">${back}</span><span class="ck-label">Back</span></div>
         <div class="coach-key gas"><span class="ck-glyph">${go}</span><span class="ck-label">Go</span></div>

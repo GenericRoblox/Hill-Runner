@@ -105,6 +105,32 @@
     ok(!coachEl(), 'the strip removes itself when it has finished');
     ok(doneCalls === 1 && saveData.isCoachDone(), 'completing the coach is recorded once');
 
+    // --- Touch skin ---------------------------------------------------------
+    // On glass the hint becomes a picture of the screen itself, split down the
+    // middle, because the zones (left half brakes, right half drives) are the
+    // one thing a touch player cannot work out by looking. The halves must
+    // still fill on press — `.coach.touch .coach-key` ties on specificity with
+    // `.coach-key.gas.on`, so a background declared on the touch rule would
+    // silently win on source order and kill the whole point of the hint.
+    saveData.data.coachDone = false;
+    showCoach(() => {});
+    await wait(40);
+    const c = coachEl();
+    c.classList.add('touch');
+    const gasHalf = c.querySelector('.coach-key.gas');
+    const brakeHalf = c.querySelector('.coach-key.brake');
+    gasHalf.classList.add('on');
+    brakeHalf.classList.add('on');
+    ok(getComputedStyle(gasHalf).backgroundColor === 'rgb(88, 191, 67)',
+      `touch GO half fills green when held (got ${getComputedStyle(gasHalf).backgroundColor})`);
+    ok(getComputedStyle(brakeHalf).backgroundColor === 'rgb(224, 82, 74)',
+      `touch BACK half fills red when held (got ${getComputedStyle(brakeHalf).backgroundColor})`);
+    ok(getComputedStyle(gasHalf).transform === 'none',
+      'the touch plate does not depress — a screen has no travel');
+    ok(getComputedStyle(brakeHalf).borderRightWidth === '3px',
+      'the two halves are divided, so they read as one screen rather than two buttons');
+    hideCoach();
+
     // --- Skippable ----------------------------------------------------------
     saveData.data.coachDone = false;
     doneCalls = 0;
