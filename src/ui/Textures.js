@@ -12,16 +12,18 @@ const FILES = [
   'brick', 'pavement', 'concrete', 'leaves', 'underground', 'liquid',
 ];
 
-// Source file extension per tile (default jpg); stone ships as a png.
-const EXT = { stone: 'png' };
-
+// Every tile ships as a jpg. Stone used to be a 2.9 MB png — a third of the
+// game's entire download for one opaque tile with no transparency to protect.
+// Re-encoded at quality 95 with no chroma subsampling it is 125 KB and differs
+// by well under one level of brightness per pixel, which nothing survives being
+// multiplied by a tint anyway.
 const images = {};
 const cache = new Map();
 
 export function loadTextures() {
   for (const name of FILES) {
     const img = new Image();
-    img.src = `textures/${name}-texture.${EXT[name] || 'jpg'}`;
+    img.src = `textures/${name}-texture.jpg`;
     images[name] = img;
   }
 }

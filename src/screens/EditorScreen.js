@@ -625,12 +625,15 @@ export class EditorScreen {
       e.preventDefault();
       this._pin('pan');
     } else if (k === 'escape') {
-      // Close an open modal or the params panel first; only a bare Escape exits.
+      // Escape backs out of whatever is open — modal, pinned tool, params panel
+      // — and stops there. It deliberately does NOT exit the editor: on the web
+      // Escape also leaves fullscreen, so a bare Escape would both drop the
+      // player out of fullscreen AND close their level in one press. The back
+      // arrow in the top bar is the way out.
       const modal = this.ui?.querySelector('.overlay');
       if (modal) modal.remove();
       else if (this.pinned) this._pin(this.pinned);
       else if (this.selected) this._closeParams();
-      else this._exitToList();
     } else if (['arrowleft', 'arrowright', 'arrowup', 'arrowdown', 'a', 'd', 'w', 's'].includes(k)) {
       this._held.add(k); // continuous pan applied in update()
     }
@@ -654,7 +657,7 @@ export class EditorScreen {
     const top = el('div', { class: 'ed-top' });
 
     top.appendChild(el('button', {
-      class: 'ed-icon', title: 'Save & close (Esc)', text: '←',
+      class: 'ed-icon', title: 'Save & close', text: '←',
       onclick: () => this._exitToList(),
     }));
 

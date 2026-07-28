@@ -844,7 +844,11 @@ export class Obstacles {
     ctx.lineCap = 'round';
     const span = w + 90;
     for (let i = 0; i < 7; i++) {
-      const phase = (t * 34 * dir + i * 46) % span;
+      // Phase always runs forward and always stays positive: `%` on a negative
+      // dividend returns a NEGATIVE remainder in JS, which sent the reverse
+      // slick's bands sliding off the right-hand end instead of looping. The
+      // direction lives in how bx reads the phase, not in the phase itself.
+      const phase = ((t * 34 + i * 46) % span + span) % span;
       const bx = dir > 0 ? x0 - 45 + phase : x0 + w + 45 - phase;
       ctx.globalAlpha = 0.55;
       ctx.strokeStyle = bands[i % bands.length];

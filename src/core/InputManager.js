@@ -1,6 +1,37 @@
 // Single internal Gas/Brake input state mapped from keyboard + touch (spec §4, §7).
-// Keyboard: D/→ = gas, A/← = brake/reverse; W/S alt pair; Esc/P = pause; R = restart.
+// Keyboard: D/→ = gas, A/← = brake/reverse; W/S alt pair; P = pause; R = restart.
 // Touch: right pedal zone = gas, left = brake; multi-touch supported (rocking).
+//
+// Bindings key off `event.code` (physical key position), NOT `event.key`, so the
+// WASD block works unchanged on an AZERTY keyboard, where those same physical
+// keys type ZQSD. CrazyGames asks that bindings adapt to the player's layout
+// rather than asking the player to adapt to the game; `code` is what does that.
+// The arrow keys are layout-independent either way and stay the primary hint.
+//
+// ESCAPE IS DELIBERATELY NOT A PAUSE KEY. On the web Escape leaves fullscreen,
+// so binding it here means one press does two things and the player loses the
+// fullscreen they chose. Pause is P, plus the on-screen button — see the
+// CrazyGames "restricted keys" guidance.
+
+// Layout-independent name for a key press. `code` is the physical key, so the
+// same token comes back whatever the player's layout types there. Synthetic
+// events (test pages) often carry only `key`, so fall back to normalising that
+// into the same shape: 'd' -> 'keyd', 'ArrowRight' -> 'arrowright'.
+function keyToken(e) {
+  if (e.code) return e.code.toLowerCase();
+  const k = (e.key || '').toLowerCase();
+  return /^[a-z]$/.test(k) ? `key${k}` : k;
+}
+
+// True when the device's primary pointer is a finger. Guarded because the test
+// harnesses boot this file in environments without matchMedia.
+export function coarsePointer() {
+  try {
+    return !!window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+  } catch (e) {
+    return false;
+  }
+}
 
 class InputManager {
   constructor() {
@@ -8,7 +39,13 @@ class InputManager {
     this.brake = false;
     this._keys = new Set();
     this._touches = new Map(); // touchId -> 'gas' | 'brake'
-    this.touchActive = false;  // true once any touch happens (show pedals)
+    // Pedals are drawn whenever touch is the likely input. Waiting for the
+    // FIRST touch to reveal them (the old rule) meant a new phone player was
+    // handed a car and no visible controls — they had to guess that the screen
+    // halves were pedals. A coarse primary pointer says "this is a touch
+    // device" up front; a real touch still flips it on for anything that
+    // reports otherwise (hybrid laptops, some tablets in desktop mode).
+    this.touchActive = coarsePointer();
     this.onPause = null;
     this.onRestart = null;
     this._canvas = null;
@@ -19,14 +56,14 @@ class InputManager {
 
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
-      const k = e.key.toLowerCase();
-      if (k === 'escape' || k === 'p') { this.onPause?.(); return; }
-      if (k === 'r') { this.onRestart?.(); return; }
+      const k = keyToken(e);
+      if (k === 'keyp') { this.onPause?.(); return; }
+      if (k === 'keyr') { this.onRestart?.(); return; }
       this._keys.add(k);
       this._recomputeKeys();
     });
     window.addEventListener('keyup', (e) => {
-      this._keys.delete(e.key.toLowerCase());
+      this._keys.delete(keyToken(e));
       this._recomputeKeys();
     });
     window.addEventListener('blur', () => {
@@ -43,8 +80,8 @@ class InputManager {
 
   _recomputeKeys() {
     const K = this._keys;
-    this._kbGas = K.has('d') || K.has('arrowright') || K.has('w');
-    this._kbBrake = K.has('a') || K.has('arrowleft') || K.has('s');
+    this._kbGas = K.has('keyd') || K.has('arrowright') || K.has('keyw') || K.has('arrowup');
+    this._kbBrake = K.has('keya') || K.has('arrowleft') || K.has('keys') || K.has('arrowdown');
     this._recompute();
   }
 

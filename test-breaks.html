@@ -11,7 +11,7 @@
     // Ad-break cadence + portal-seam test. Run like the other harnesses:
     //   msedge --headless=new --dump-dom http://localhost:8000/test-breaks.html
     // The real break manager is exercised against a stubbed platform.showAd(),
-    // so this asserts OUR rules (3-5 wins, wins only, never mid-run, always
+    // so this asserts OUR rules (every 3 wins, wins only, never mid-run, always
     // hands control back) — the portals' own frequency caps sit on top.
     //
     // It also guards the naming rule in src/core/Breaks.js: an ad-blocker-bait
@@ -65,7 +65,7 @@
       ok(adsShown === 0, `20 wreck-retries showed no ads (shown=${adsShown})`);
       ok(started === 20, `every retry still started the level (started=${started})`);
 
-      // --- The first ad lands somewhere in the 3-5 win window, never before.
+      // --- The first ad lands on the 3rd win, never before.
       adsShown = 0;
       let winsBeforeFirstAd = 0;
       for (let i = 1; i <= 6 && adsShown === 0; i++) {
@@ -74,8 +74,8 @@
         if (adsShown === 0) winsBeforeFirstAd = i;
       }
       ok(adsShown === 1, `an ad fired within 6 wins (shown=${adsShown})`);
-      ok(winsBeforeFirstAd >= 2 && winsBeforeFirstAd <= 4,
-        `first ad came after 3-5 wins (played ${winsBeforeFirstAd + 1} levels first)`);
+      ok(winsBeforeFirstAd === 2,
+        `first ad came on the 3rd win (played ${winsBeforeFirstAd + 1} levels first)`);
       ok(blockingDuringAd, 'the game loop was frozen (ads.blocking) while the ad played');
       ok(ads.blocking === false, 'the loop was released once the ad finished');
 
@@ -87,8 +87,8 @@
         await ads.gate(() => plays++);
       }
       ok(plays === 40, `every win still led into the next level (plays=${plays})`);
-      ok(adsShown >= 8 && adsShown <= 13,
-        `40 wins produced ${adsShown} ads (expected 8-13, i.e. one per 3-5 levels)`);
+      ok(adsShown === 13,
+        `40 wins produced ${adsShown} ads (expected 13, i.e. one per 3 levels)`);
 
       // --- A broken/blocked ad must never strand the player behind a frozen screen.
       platform.showAd = async () => { throw new Error('simulated adblock'); };

@@ -10,20 +10,26 @@ export function calcStars(level, timeSeconds, flipped) {
 
 // Coins earned for a run. Style bonus: total airtime, capped.
 //
-// A replay pays ONLY if it improves the star rating. Paying for a repeat of a
-// result you already have turns the easiest early level into a coin farm —
-// grinding it beats playing the game, which is both worse to play and
-// impossible to balance around. Every level still has three tiers of
-// improvement to sell (finish / no flip / under target), so there is plenty of
-// headroom before a player has taken everything a level can pay.
+// Beating your own star record is what a level really pays for; a replay that
+// matches it pays a token amount instead. Paying full price for a repeat turns
+// the easiest early level into a coin farm — grinding it beats progressing,
+// which is worse to play and impossible to balance around. But paying NOTHING
+// is worse still: target times are generous, so most first clears are already
+// three stars, and a level would then pay exactly once ever. A replay you
+// can't improve on would be literally pointless, and that reads as a bug.
+// Roughly a tenth of a first clear keeps a lap worth driving without ever
+// making it the efficient way to earn.
 export function calcPayout(level, timeSeconds, stars, airTimeSeconds, prevBestStars) {
-  if (stars <= (prevBestStars || 0)) return 0;
   const base = level.basePayout;
+  const prev = prevBestStars || 0;
+  const styleBonus = (cap) => Math.min(Math.round(airTimeSeconds * 15), Math.round(base * cap));
+
+  if (stars <= prev) return Math.round(base * 0.12) + styleBonus(0.12);
+
   let coins = Math.round(base * (0.4 + 0.2 * stars));
-  coins += Math.min(Math.round(airTimeSeconds * 15), Math.round(base * 0.3));
+  coins += styleBonus(0.3);
   // First-time star improvements pay a chunky one-off bonus.
-  const newStars = Math.max(0, stars - (prevBestStars || 0));
-  coins += newStars * Math.round(base * 0.5);
+  coins += (stars - prev) * Math.round(base * 0.5);
   return coins;
 }
 

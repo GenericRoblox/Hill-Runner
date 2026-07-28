@@ -67,7 +67,7 @@ export class InfiniteGameScreen extends GameScreen {
     };
     input.reset();
 
-    sound.startEngine();
+    sound.startEngine(); // (also re-armed by GameScreen._build on every retry)
     music.playNext();
     this._build();
   }
@@ -432,7 +432,7 @@ export class InfiniteGameScreen extends GameScreen {
     platform.gameplayStop();
     this.camera.shake = 0;
     sound.crash();
-    sound.updateEngine(0, false);
+    sound.stopEngine();
     // An infinite run has no win state — a completed run is the equivalent, so
     // it counts toward the ad cadence the same as a finished level.
     ads.noteLevelWon();

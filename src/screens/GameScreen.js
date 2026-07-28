@@ -11,6 +11,7 @@ import { Car } from '../physics/Car.js';
 import { Camera } from '../ui/Camera.js';
 import { renderHUD } from '../ui/HUD.js';
 import { renderTouchPedals } from '../ui/TouchControls.js';
+import { showCoach, hideCoach, setCoachVisible } from '../ui/Onboarding.js';
 import { sound } from '../ui/Sound.js';
 import { music } from '../ui/Music.js';
 import { input } from '../core/InputManager.js';
@@ -86,7 +87,6 @@ export class GameScreen {
     input.onRestart = () => { if (this.state === 'playing' || this.state === 'failed') { hideResult(); this.restart(); } };
     input.reset();
 
-    sound.startEngine();
     music.playNext(); // fades in a track different from whatever just played
     this._build();
     this._showIntro();
@@ -110,6 +110,9 @@ export class GameScreen {
   }
 
   _build() {
+    // Engine starts here, not in enter(): a retry rebuilds without re-entering,
+    // and the run ends by stopping the oscillator outright.
+    sound.startEngine();
     this.physics = new PhysicsWorld();
     this.terrain = new Terrain(this.level, this.physics);
     this.obstacleSet = new Obstacles(this.level, this.physics);
@@ -117,6 +120,7 @@ export class GameScreen {
     this.car.addTo(this.physics);
     this.particles = new ParticleSystem();
     this.tireProfiles = buildTireProfiles(this.worldDef);
+    this._maybeCoach();
     window.__car = this.car; // dev hook: console access for physics tuning
     this.camera = new Camera(this.canvas);
     this.time = 0;
@@ -126,6 +130,17 @@ export class GameScreen {
     this._prevSpinAngle = this.car.chassis.angle;
     this.state = 'playing';
     platform.gameplayStart(); // every start and retry lands here
+  }
+
+  // The control coach, once per player, on the level a new player is dropped
+  // into. Started from _build() rather than enter() so a first-timer who wrecks
+  // in the first ten seconds gets the hint again on the retry — that player is
+  // exactly who it is for. The "done" flag is only set once the strip has
+  // finished saying its piece, so a wreck mid-lesson doesn't burn it.
+  _maybeCoach() {
+    if (this.custom || this.worldId !== 1 || this.levelIndex !== 0) return;
+    if (saveData.isCoachDone()) return;
+    showCoach(() => saveData.markCoachDone());
   }
 
   _teardown() {
@@ -177,6 +192,7 @@ export class GameScreen {
     sound.stopEngine();
     music.stop(); // covers quitting to a menu; no-op if _win() already faded it out
     hideResult();
+    hideCoach();
     this._hidePause();
   }
 
@@ -185,6 +201,9 @@ export class GameScreen {
     if (this.state === 'playing') {
       this.state = 'paused';
       platform.gameplayStop();
+      // The coach steps aside rather than being destroyed: a pause mid-lesson
+      // resumes the lesson, and its clock doesn't run under the overlay.
+      setCoachVisible(false);
       document.getElementById('pause-overlay').classList.remove('hidden');
     } else if (this.state === 'paused') {
       this.resume();
@@ -195,6 +214,7 @@ export class GameScreen {
     this._hidePause();
     input.reset();
     this.state = 'playing';
+    setCoachVisible(true);
     platform.gameplayStart();
   }
   _hidePause() {
@@ -307,12 +327,13 @@ export class GameScreen {
 
   _fail(reason) {
     this.state = 'failed';
+    hideCoach(); // the results board owns the screen now
     platform.gameplayStop();
     // camera.follow (the only thing that decays shake) stops with the run —
     // clear any leftover shake or the world jitters under the overlay forever.
     this.camera.shake = 0;
     sound.crash();
-    sound.updateEngine(0, false);
+    sound.stopEngine();
     showResult({
       won: false,
       reason,
@@ -324,6 +345,7 @@ export class GameScreen {
 
   _win() {
     this.state = 'won';
+    hideCoach(); // the results board owns the screen now
     platform.gameplayStop();
     this.camera.shake = 0; // see _fail — a hard landing at the flag otherwise shakes forever
     music.stop(); // fade out right at the goal, not when they leave for the next level
@@ -334,7 +356,7 @@ export class GameScreen {
       const stars = calcStars(this.level, this.time, this.car.everFlipped);
       saveData.recordResult(this.key, stars, this.time);
       sound.win();
-      sound.updateEngine(0, false);
+      sound.stopEngine();
       showResult({
         won: true,
         stars,
@@ -355,7 +377,7 @@ export class GameScreen {
     saveData.recordResult(this.key, stars, this.time);
     saveData.addCoins(coins);
     sound.win();
-    sound.updateEngine(0, false);
+    sound.stopEngine();
     ads.noteLevelWon(); // only wins march the player toward an ad break
     if (stars === 3) platform.happytime(); // portals use this to gauge a good moment
 
@@ -830,100 +852,65 @@ export class GameScreen {
       ctx.save();
       ctx.translate(wall.cx, wall.cy);
       if (wall.style === 'shed') {
-        // A drive-through machine shed, seen with its near side cut away.
+        // A drive-through machine shed, near side cut away. Four shapes and
+        // nothing else: a dark opening, two posts, the header beam, and a red
+        // gable roof sitting on the post tops.
         //
-        // Two rules do all the work here. First, the POSTS RUN THE WHOLE WAY
-        // UP — ground to eave — and the roof lands on top of them, so the
-        // structure is visibly carried; the first version stopped the posts at
-        // the header and left the roof floating with nothing under it.
-        // Second, almost nothing else is drawn: at 60 km/h you read a
-        // silhouette and a dark hole, not board seams and hay bales. What is
-        // left is a pitched roof, two posts, a header, and one warm seam of
-        // daylight under the ridge.
+        // Deliberately plain. An earlier pass had plank seams, corrugated tin
+        // and a lit clerestory gap, which stacked four horizontal bands across
+        // the opening and read as a striping glitch rather than a building —
+        // at 60 km/h you see a silhouette and a hole, and detail only muddies
+        // which edge is the one you have to duck under.
         //
-        // Everything sits BEHIND the car on purpose — you're threading a low
-        // clearance, and foreground structure at that moment is unplayable.
+        // Everything draws BEHIND the car: you are threading a low clearance,
+        // and foreground structure at that moment is unplayable.
         const hw = wall.w / 2, hh = wall.h / 2;
         const gy = (wall.groundY ?? wall.cy + 170) - wall.cy;  // road, in wall-local coords
-        const POST = 26, EAVE = 30, RIDGE = 66, DECK = 13;
-        const postTop = -hh - 34;                    // where the roof sits down onto the posts
+        const POST = 26, EAVE = 26, RIDGE = 62, FASCIA = 12;
+        const postTop = -hh - 30;
         const inX = hw - POST;
 
-        // Interior: one flat dark box with a few wide board seams. That is the
-        // whole back wall.
-        ctx.fillStyle = '#1d1610';
+        // The opening. One flat dark fill — it is a hole, not a wall.
+        ctx.fillStyle = '#241812';
         ctx.fillRect(-inX, postTop, inX * 2, gy - postTop);
-        ctx.fillStyle = texPattern('wood', '#5e3327', 150) || '#3b2119';
-        ctx.fillRect(-inX, -hh - 8, inX * 2, gy + hh + 8);
-        ctx.fillStyle = 'rgba(12, 8, 5, 0.55)';
-        for (let bx = -inX + 34; bx < inX - 6; bx += 46) ctx.fillRect(bx, -hh - 8, 4, gy + hh + 8);
-        const shade = ctx.createLinearGradient(0, -hh, 0, gy);
-        shade.addColorStop(0, 'rgba(14, 9, 6, 0.66)');
-        shade.addColorStop(1, 'rgba(14, 9, 6, 0.2)');
-        ctx.fillStyle = shade;
-        ctx.fillRect(-inX, -hh - 8, inX * 2, gy + hh + 8);
 
-        // The one accessory: daylight in the gap under the ridge. It says
-        // "this is an enclosure with a roof on it" in a single stroke.
-        ctx.fillStyle = '#ffcf82';
-        ctx.fillRect(-inX, postTop, inX * 2, 7);
-        ctx.fillStyle = 'rgba(255, 207, 130, 0.22)';
-        ctx.fillRect(-inX, postTop + 7, inX * 2, 22);
-
-        // Posts: ground to eave, both of them, carrying the roof.
-        const timber = texPattern('wood', '#b08050', 130) || '#8a6b42';
+        // Posts, ground to eave, carrying the roof.
+        ctx.strokeStyle = '#4a3520';
+        ctx.lineWidth = 3;
         for (const px of [-hw, hw - POST]) {
-          ctx.fillStyle = timber;
+          ctx.fillStyle = '#8a6b42';
           ctx.fillRect(px, postTop, POST, gy - postTop);
-          ctx.strokeStyle = '#4a3520';
-          ctx.lineWidth = 2.5;
           ctx.strokeRect(px, postTop, POST, gy - postTop);
           ctx.fillStyle = '#8d8577';                 // concrete footing
           ctx.fillRect(px - 5, gy - 9, POST + 10, 11);
         }
 
-        // Header beam. This rectangle IS the collider, and its lit underside
-        // is the lowest point — the one thing the player has to judge.
-        ctx.fillStyle = texPattern('wood', '#dcaeaf', 150) || '#a8804e';
+        // Header beam. This rectangle IS the collider, and the lit strip along
+        // its underside is the lowest point — the only thing here the player
+        // actually has to judge, so it is the only thing that pops.
+        ctx.fillStyle = '#c69a5e';
         ctx.fillRect(-hw, -hh, wall.w, wall.h);
-        ctx.strokeStyle = '#4a3520';
-        ctx.lineWidth = 3;
         ctx.strokeRect(-hw, -hh, wall.w, wall.h);
         ctx.fillStyle = '#ffe9bd';
         ctx.fillRect(-hw, hh - 5, wall.w, 5);
 
-        // Roof: a shallow gable resting ON the post tops. The deck is drawn as
-        // one closed shape with the fascia along its bottom edge, so it reads
-        // as a lid sitting on the frame rather than a slab hovering over it.
-        const l = -hw - EAVE, r = hw + EAVE, eaveY = postTop + 4;
+        // Gable roof, landing on the post tops. Barn red rather than the tin
+        // grey it used to wear: grey fought the Farm's palette, and a red roof
+        // over timber posts says "barn" without needing any detail at all.
+        const l = -hw - EAVE, r = hw + EAVE, eaveY = postTop;
         ctx.beginPath();
         ctx.moveTo(l, eaveY);
         ctx.lineTo(0, eaveY - RIDGE);
         ctx.lineTo(r, eaveY);
-        ctx.lineTo(r, eaveY + DECK);
-        ctx.lineTo(0, eaveY - RIDGE + DECK);
-        ctx.lineTo(l, eaveY + DECK);
         ctx.closePath();
-        ctx.fillStyle = '#7f8791';
+        ctx.fillStyle = '#9e4a34';
         ctx.fill();
-        ctx.strokeStyle = '#474d55';
-        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = '#5a2c1e';
+        ctx.lineWidth = 3;
         ctx.stroke();
-        ctx.strokeStyle = '#5f666f';                 // corrugation, following the pitch
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        for (let k = 1; k < 9; k++) {
-          const f = k / 9;
-          for (const sgn of [-1, 1]) {
-            const rx = sgn * (hw + EAVE) * f;
-            const ry = eaveY - RIDGE * (1 - f);
-            ctx.moveTo(rx, ry + 2);
-            ctx.lineTo(rx, ry + DECK - 2);
-          }
-        }
-        ctx.stroke();
-        ctx.fillStyle = '#3d2c1c';                   // ridge cap
-        ctx.fillRect(-13, eaveY - RIDGE - 3, 26, 8);
+        ctx.fillStyle = '#7a3527';                   // fascia along the eave
+        ctx.fillRect(l, eaveY, r - l, FASCIA);
+        ctx.strokeRect(l, eaveY, r - l, FASCIA);
       } else if (wall.style === 'gantry') {
         // Low overhead beam = the soffit of an overpass. Columns run UP out
         // of frame from both ends (never down across the lane), so the beam

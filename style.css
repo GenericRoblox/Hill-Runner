@@ -1026,6 +1026,124 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
   .level-intro .li-eyebrow { font-size: 0.62rem; }
 }
 
+/* ---------- First-run coach: a dashboard strip at the foot of the screen ----
+   Sibling of the route marker above — same cream board, same ink outline — so
+   it reads as the game talking, not as a tutorial bolted on top. The whole idea
+   is that it MIRRORS the controls instead of describing them: each half drops
+   onto its edge and lights up exactly as the player presses, which is the same
+   press every toy-block button in this UI performs. That is why it needs two
+   words instead of a sentence.
+   It never eats input: the board is pointer-events:none so the first tap goes
+   to the throttle, and only "Got it" opts back in. */
+.coach {
+  position: fixed; bottom: 4.5%; left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  padding: 11px 20px 14px;
+  background: var(--cream);
+  border: 4px solid var(--ink);
+  border-radius: 20px;
+  box-shadow: 0 6px 0 var(--board-edge), 0 14px 26px rgba(30, 18, 6, 0.28);
+  pointer-events: none;
+  max-width: min(460px, calc(100vw - 28px));
+  animation: coach-rise 0.45s cubic-bezier(0.2, 1.5, 0.4, 1) both;
+}
+
+.coach.out { animation: coach-sink 0.4s ease-in both; }
+.coach.hidden { display: none; }
+
+.coach-eyebrow {
+  font-family: 'Fredoka', sans-serif;
+  font-size: 0.7rem; font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.coach-keys { display: flex; gap: 14px; }
+
+/* A key cap on a keyboard, a pedal on glass — one component, two shapes, so
+   the hint looks like the thing the player is reaching for. */
+.coach-key {
+  width: 74px;
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 7px 0 6px;
+  background: #fffdf6;
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  box-shadow: 0 4px 0 var(--board-edge);
+  /* The drop is eased because a block falling onto its edge reads better with
+     a couple of frames of travel. The COLOUR is not: this strip's whole job is
+     to confirm the player's own press, and a fade makes that confirmation feel
+     like lag on the controls rather than a response to them. */
+  transition: transform 0.06s ease-out, box-shadow 0.06s ease-out;
+}
+
+/* Arrows come from the system fallback (neither shipped face carries them), and
+   the default weight reads thin and papery next to the chunky ink outlines.
+   Size and weight are pushed until the glyph sits in the same family. */
+.coach-key .ck-glyph {
+  font-family: 'Fredoka', 'Segoe UI Symbol', sans-serif;
+  font-size: 1.85rem; line-height: 0.95; font-weight: 700;
+  color: var(--ink);
+}
+
+.coach-key .ck-label {
+  font-family: var(--display);
+  font-size: 0.92rem; line-height: 1.1;
+  color: var(--ink-soft);
+}
+
+/* The press: drop the block onto its own edge, exactly like the menu buttons. */
+.coach-key.on {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 var(--board-edge);
+}
+.coach-key.gas.on { background: var(--go); }
+.coach-key.brake.on { background: var(--red); }
+.coach-key.on .ck-glyph, .coach-key.on .ck-label { color: #fff; }
+
+.coach-done {
+  pointer-events: auto;
+  margin-top: 1px;
+  padding: 3px 14px 4px;
+  font-family: 'Fredoka', sans-serif;
+  font-size: 0.78rem; font-weight: 600;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 2px solid rgba(107, 75, 38, 0.32);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.coach-done:hover { color: var(--ink); border-color: var(--ink); }
+.coach-done:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+
+.coach-goal { display: flex; align-items: center; gap: 10px; padding: 2px 4px 4px; }
+.coach-goal .cg-flag { font-family: 'Fredoka', sans-serif; font-size: 1.6rem; line-height: 1; }
+.coach-goal .cg-text { font-family: var(--display); font-size: 1.5rem; color: var(--ink); }
+
+/* On glass the two pedals ARE the screen halves, so they sit further apart and
+   gesture at the sides they stand for. */
+.coach.touch .coach-key { width: 66px; border-radius: 50%; padding: 10px 0 9px; }
+.coach.touch .coach-keys { gap: 46px; }
+
+@keyframes coach-rise {
+  from { opacity: 0; transform: translate(-50%, 60px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes coach-sink {
+  from { opacity: 1; transform: translate(-50%, 0); }
+  to   { opacity: 0; transform: translate(-50%, 30px); }
+}
+
+@media (max-width: 560px) {
+  .coach { bottom: 3.5%; padding: 9px 15px 11px; gap: 5px; }
+  .coach-key { width: 62px; }
+  .coach.touch .coach-key { width: 58px; }
+  .coach.touch .coach-keys { gap: 30px; }
+  .coach-goal .cg-text { font-size: 1.25rem; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
   /* Animations are the reveal, so pin the end states when motion is off. */
@@ -1034,4 +1152,8 @@ h2, h3 { font-family: var(--display); font-weight: 400; letter-spacing: 1px; }
   .reveal-art.shattered .reveal-icon { opacity: 1; transform: translate(-50%, -50%); }
   .level-intro { opacity: 1; transform: translateX(-50%); }
   .level-intro.out { opacity: 0; }
+  /* The coach's press state is feedback, not decoration — it still has to read
+     with transitions off, so pin the board and let the colour swap land. */
+  .coach { opacity: 1; transform: translateX(-50%); }
+  .coach.out { opacity: 0; }
 }

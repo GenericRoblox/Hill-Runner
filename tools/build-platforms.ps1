@@ -52,13 +52,21 @@ foreach ($name in $targets) {
   $sizeMB = [math]::Round(((Get-ChildItem -Recurse -File $dest | Measure-Object Length -Sum).Sum / 1MB), 2)
   Write-Host "  -> $dest  ($sizeMB MB)" -ForegroundColor Green
 
+  $zipPath = Join-Path $buildsDir "hillrunner-$name.zip"
   if ($Zip) {
-    $zipPath = Join-Path $buildsDir "hillrunner-$name.zip"
     if (Test-Path $zipPath) { Remove-Item -Force $zipPath }
     # Zip the CONTENTS, not the folder: both portals expect index.html at the root of the archive.
     Compress-Archive -Path (Join-Path $dest '*') -DestinationPath $zipPath
     $zipMB = [math]::Round(((Get-Item $zipPath).Length / 1MB), 2)
     Write-Host "  -> $zipPath  ($zipMB MB)" -ForegroundColor Green
+  }
+  elseif (Test-Path $zipPath) {
+    # A stale archive sitting next to a freshly built folder is the nastiest
+    # trap this script can leave behind: the folder looks up to date, and the
+    # thing you actually upload is whatever you last zipped. Delete it rather
+    # than let it be mistaken for the current build.
+    Remove-Item -Force $zipPath
+    Write-Host "  removed stale $zipPath - re-run with -Zip to rebuild it" -ForegroundColor Yellow
   }
 }
 

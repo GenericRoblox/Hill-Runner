@@ -40,6 +40,9 @@ function defaultSave() {
     // (CrazyGames' quality bar especially) want a brand-new player driving
     // immediately, not reading a menu, so the very first launch skips Home.
     firstRunDone: false,
+    // The in-level control coach has run to completion once. Separate from
+    // firstRunDone, which is already set before the first level even loads.
+    coachDone: false,
     // One-time "new mode" reveal cutscenes (Worlds menu). Sticky once the
     // player has watched the unlock play out, so it never replays.
     infiniteSeen: false, // Infinite mode reveal shown
@@ -208,6 +211,8 @@ class SaveData {
   // --- Master mute (AudioBus reads this at boot; setUserMuted writes it) ---
   isFirstRun() { return !this.data.firstRunDone; }
   markFirstRunDone() { this.data.firstRunDone = true; this.save(); }
+  isCoachDone() { return !!this.data.coachDone; }
+  markCoachDone() { this.data.coachDone = true; this.save(); }
 
   isMuted() { return !!this.data.muted; }
   setMuted(m) { this.data.muted = !!m; this.save(); }

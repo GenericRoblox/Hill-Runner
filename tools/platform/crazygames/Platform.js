@@ -115,25 +115,33 @@ class Platform {
   // resolve false rather than reject: Breaks has the game frozen and muted, so
   // anything that doesn't resolve strands the player behind a black screen.
   //
-  // Breaks.js mutes before calling this and unmutes once it settles, which
-  // covers the docs' "mute for the duration" rule more completely than muting
-  // on adStarted would (that would leak engine hum during the request).
+  // Breaks.js mutes and pauses BEFORE calling this and restores once it
+  // settles, which satisfies the docs' "mute the audio and pause the game when
+  // the ad starts / restore when it finishes or fails" rule more completely
+  // than acting on adStarted would — muting only then would leak engine hum
+  // for the length of the request.
+  //
+  // The watchdog is in TWO stages, and that matters. A single flat timeout
+  // fires while a long ad is still on screen, which unmutes and unfreezes the
+  // game underneath it — exactly what the docs forbid. So: a short guard while
+  // we're waiting on a request that should answer quickly, swapped for a long
+  // one the moment adStarted tells us an ad is genuinely playing.
   async showAd() {
     if (!this.ready) return false;
     return new Promise((resolve) => {
       let settled = false;
+      let timer;
+      const arm = (ms) => { clearTimeout(timer); timer = setTimeout(() => finish(false), ms); };
       const finish = (played) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
         resolve(played);
       };
-      // Last-resort escape hatch. The SDK normally always calls back, but a
-      // break that never resolves is an unrecoverable freeze, so cap it.
-      const timer = setTimeout(() => finish(false), 30000);
+      arm(15000); // no answer at all from the request
       try {
         sdk().ad.requestAd('midgame', {
-          adStarted: () => {},
+          adStarted: () => arm(180000), // an ad is on screen: wait it out
           adFinished: () => finish(true),
           adError: (err) => {
             // `unfilled`, `adblock`, `adCooldown` and `adsDisabledBasicLaunch`

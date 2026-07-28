@@ -1,4 +1,4 @@
-// Interstitial cadence: an ad break every 3-5 completed levels, taken at the
+// Interstitial cadence: an ad break every 3 completed levels, taken at the
 // next natural break — a tap that means "play again" (Next Level, Retry, Drive
 // Again, picking a level). Never mid-run, never on the way out to a menu.
 //
@@ -14,22 +14,20 @@
 // no win state and would otherwise never contribute.
 //
 // The portals cap frequency themselves (CrazyGames spaces midgames ~3 minutes
-// apart; Poki decides per commercialBreak), so a break we offer may well pass
-// without an ad. That's the normal case, not an error — gate() always hands
-// control back to the game either way.
+// apart and answers `adCooldown` if you ask sooner; Poki decides per
+// commercialBreak), so a break we offer may well pass without an ad. That's the
+// normal case, not an error — gate() always hands control back to the game
+// either way, and it's why offering one every 3 levels is safe: the portal, not
+// this file, has the final say on how often a player actually sees one.
 
 import { platform } from './Platform.js';
 import { muteForAd, unmuteAfterAd } from '../ui/AudioBus.js';
 
-const MIN_LEVELS = 3;
-const MAX_LEVELS = 5;
-
-const rollTarget = () => MIN_LEVELS + Math.floor(Math.random() * (MAX_LEVELS - MIN_LEVELS + 1));
+const LEVELS_PER_BREAK = 3;
 
 class BreakManager {
   constructor() {
     this.levelsWon = 0;
-    this.target = rollTarget();
     this.blocking = false; // main.js freezes the game loop while a break is up
   }
 
@@ -41,9 +39,8 @@ class BreakManager {
   // then starts the run. `fn` runs either way.
   async gate(fn) {
     if (this.blocking) return; // tapped again while the break was opening
-    if (this.levelsWon >= this.target) {
+    if (this.levelsWon >= LEVELS_PER_BREAK) {
       this.levelsWon = 0;
-      this.target = rollTarget();
       await this._break();
     }
     fn();

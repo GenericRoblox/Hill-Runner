@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>onboarding + control bindings test</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <pre id="testlog" style="position:fixed;inset:0;z-index:999;background:#111;color:#dfe;font:12px monospace;overflow:auto;margin:0;padding:10px"></pre>
+
+  <script type="module">
+    // First-run coach + keyboard binding test. Run like the other harnesses:
+    //   msedge --headless=new --dump-dom http://localhost:8000/test-onboarding.html
+    //
+    // Two things are being guarded, both of them CrazyGames requirements rather
+    // than nice-to-haves:
+    //
+    // 1. The onboarding strip. It must appear for a brand-new player on the
+    //    level they are dropped into, teach without blocking (pointer-events),
+    //    be skippable, retire itself once the player has actually driven, and
+    //    never come back. A tutorial that reappears every session is worse than
+    //    none at all.
+    // 2. The control bindings. Escape must NOT pause — on the web it leaves
+    //    fullscreen, and one key doing both is exactly what the "restricted
+    //    keys" guidance forbids. Bindings key off physical position so an
+    //    AZERTY keyboard's ZQSD lands on the same keys as WASD.
+    import { input } from './src/core/InputManager.js';
+    import { showCoach, hideCoach, setCoachVisible } from './src/ui/Onboarding.js';
+    import { saveData } from './src/core/SaveData.js';
+
+    const log = [];
+    let failures = 0;
+    const ok = (cond, msg) => {
+      log.push(`${cond ? 'PASS' : 'FAIL'}  ${msg}`);
+      if (!cond) failures++;
+    };
+    const flush = () => { document.getElementById('testlog').textContent = log.join('\n'); };
+    const wait = (ms) => new Promise(r => setTimeout(r, ms));
+    const coachEl = () => document.getElementById('coach');
+
+    // Synthetic key events carry `code` exactly like real ones; `key` is set to
+    // what an AZERTY layout would type there, so anything reading `key` fails.
+    const down = (code, key) => window.dispatchEvent(new KeyboardEvent('keydown', { code, key }));
+    const up = (code, key) => window.dispatchEvent(new KeyboardEvent('keyup', { code, key }));
+
+    input.init(document.createElement('canvas'));
+
+    // --- Bindings -----------------------------------------------------------
+    down('ArrowRight', 'ArrowRight');
+    ok(input.getState().gas, 'ArrowRight drives');
+    up('ArrowRight', 'ArrowRight');
+    ok(!input.getState().gas, 'releasing ArrowRight stops');
+
+    // The AZERTY case: physical D types 'd' on QWERTY but the physical A key
+    // types 'q'. Binding by code is what keeps the same physical keys working.
+    down('KeyA', 'q');
+    ok(input.getState().brake, 'physical A/Q key brakes (AZERTY layout)');
+    up('KeyA', 'q');
+    down('KeyZ', 'w');
+    ok(!input.getState().gas, 'physical Z key (AZERTY W) is not gas');
+    up('KeyZ', 'w');
+    down('KeyW', 'z');
+    ok(input.getState().gas, 'physical W/Z key drives (AZERTY layout)');
+    up('KeyW', 'z');
+
+    let paused = 0, restarted = 0;
+    input.onPause = () => paused++;
+    input.onRestart = () => restarted++;
+    down('Escape', 'Escape');
+    ok(paused === 0, 'Escape does NOT pause (it leaves fullscreen on the web)');
+    down('KeyP', 'p');
+    ok(paused === 1, 'P pauses');
+    down('KeyR', 'r');
+    ok(restarted === 1, 'R restarts');
+    input.onPause = input.onRestart = null;
+
+    // --- Coach: teaches, then retires once the player has driven ------------
+    saveData.data.coachDone = false;
+    let doneCalls = 0;
+    showCoach(() => { doneCalls++; saveData.markCoachDone(); });
+    await wait(60);
+    ok(!!coachEl(), 'coach appears');
+    ok(getComputedStyle(coachEl()).pointerEvents === 'none',
+      'coach board never eats input — the first tap has to reach the throttle');
+    ok(getComputedStyle(coachEl().querySelector('.coach-done')).pointerEvents === 'auto',
+      'the skip button is the one part that does take a click');
+
+    // Holding the throttle lights the matching half — the strip mirrors the
+    // controls, which is the whole reason it needs almost no words.
+    down('ArrowRight', 'ArrowRight');
+    await wait(120);
+    ok(coachEl().querySelector('.coach-key.gas').classList.contains('on'),
+      'holding gas lights the GO half');
+    ok(!coachEl().querySelector('.coach-key.brake').classList.contains('on'),
+      'the BACK half stays up while only gas is held');
+
+    // ...and 0.8s of throttle counts as "understood", so it moves on by itself.
+    await wait(900);
+    up('ArrowRight', 'ArrowRight');
+    ok(coachEl() && coachEl().querySelector('.coach-goal') === null,
+      'still on the controls beat immediately after the throttle target');
+    await wait(1700);
+    ok(!!coachEl()?.querySelector('.coach-goal'), 'driving advances it to the goal beat');
+    await wait(3600);
+    ok(!coachEl(), 'the strip removes itself when it has finished');
+    ok(doneCalls === 1 && saveData.isCoachDone(), 'completing the coach is recorded once');
+
+    // --- Skippable ----------------------------------------------------------
+    saveData.data.coachDone = false;
+    doneCalls = 0;
+    showCoach(() => { doneCalls++; saveData.markCoachDone(); });
+    await wait(60);
+    coachEl().querySelector('.coach-done').click();
+    ok(doneCalls === 1 && saveData.isCoachDone(), '"Got it" ends the whole sequence');
+    await wait(600);
+    ok(!coachEl(), '"Got it" removes the strip');
+
+    // --- Pause hides it rather than destroying the lesson --------------------
+    saveData.data.coachDone = false;
+    showCoach(() => {});
+    await wait(50);
+    setCoachVisible(false);
+    ok(coachEl().classList.contains('hidden'), 'pausing stands the coach down');
+    setCoachVisible(true);
+    ok(!coachEl().classList.contains('hidden'), 'resuming brings it back mid-lesson');
+    hideCoach();
+    ok(!coachEl(), 'hideCoach tears it down outright');
+
+    // Re-showing must never stack two strips.
+    showCoach(() => {});
+    showCoach(() => {});
+    await wait(30);
+    ok(document.querySelectorAll('.coach').length === 1, 'showing twice leaves one strip');
+    hideCoach();
+
+    log.push('');
+    log.push(failures ? `${failures} FAILURE(S)` : 'ALL PASS');
+    flush();
+    document.title = failures ? 'FAIL' : 'PASS';
+  </script>
+</body>
+</html>
