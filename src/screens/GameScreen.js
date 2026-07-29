@@ -28,6 +28,25 @@ import { showResult, hideResult } from './ResultOverlay.js';
 
 const STEP_MS = 1000 / 60;
 
+// Cloud silhouettes: [rx, ry, dy] base ellipse + [dx, dy, r] lobe circles,
+// all in unscaled local units around a shape's own origin. Three distinct
+// families so the sky doesn't read as one puff copy-pasted at different
+// sizes.
+const CLOUD_SHAPES = [
+  { // Puffball — compact and round, the small/near end of the range.
+    base: [40, 11, 8],
+    lobes: [[-24, 1, 14], [-6, -10, 19], [14, -4, 16], [30, 4, 11]],
+  },
+  { // Stretch — long and low, reads like it's cruising past.
+    base: [58, 10, 7],
+    lobes: [[-42, 3, 12], [-24, -9, 17], [-4, -12, 19], [16, -8, 17], [36, 2, 13], [50, 6, 9]],
+  },
+  { // Tower — one lobe rides higher than the rest, breaks up the skyline.
+    base: [36, 11, 9],
+    lobes: [[-20, 2, 14], [-4, -11, 17], [10, -22, 14], [24, -3, 16], [36, 5, 10]],
+  },
+];
+
 export class GameScreen {
   constructor(canvas) {
     this.canvas = canvas;
@@ -544,23 +563,45 @@ export class GameScreen {
     const b0 = Math.floor(offset / 560) - 1;
     const b1 = Math.floor((offset + width) / 560) + 1;
     ctx.save();
-    ctx.fillStyle = '#ffffff';
     for (let k = b0; k <= b1; k++) {
-      const sx = k * 560 + ((k * 131 % 260) + 260) % 260 - offset;
-      const sy = height * (0.1 + (((k * 47 % 23) + 23) % 23 / 23) * 0.24);
-      const s = 0.7 + (((k * 29 % 13) + 13) % 13 / 13) * 0.75;
-      ctx.globalAlpha = 0.4 + (((k * 17 % 7) + 7) % 7 / 7) * 0.25;
-      // Classic puff: a wide soft base with round lobes rising out of it
-      ctx.beginPath();
-      ctx.ellipse(sx, sy + 8 * s, 44 * s, 12 * s, 0, 0, Math.PI * 2);
-      ctx.fill();
-      for (const [dx, dy, r] of [[-26, 2, 15], [-6, -8, 21], [18, -3, 17], [34, 6, 12]]) {
-        ctx.beginPath();
-        ctx.arc(sx + dx * s, sy + dy * s, r * s, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      const hash = (p) => (((k * p) % 977) + 977) % 977 / 977;
+      const sx = k * 560 + hash(131) * 260 - offset;
+      const sy = height * (0.08 + hash(47) * 0.3);
+      const s = 0.65 + hash(29) * 0.85;
+      const shape = CLOUD_SHAPES[Math.floor(hash(71) * CLOUD_SHAPES.length)];
+      const alpha = 0.38 + hash(17) * 0.3;
+      this._drawCloudShape(ctx, sx, sy, s, shape, alpha);
     }
     ctx.restore();
+  }
+
+  // A cloud's lobes are pushed into ONE path and filled ONCE per pass.
+  // Filling each lobe separately (the old approach) let the same alpha
+  // re-composite wherever two lobes overlapped, so puffs came out with
+  // visible blotchy, denser patches instead of one even puff. moveTo()
+  // before each arc() is required to keep lobes as independent subpaths —
+  // arc() otherwise draws a connecting line from the previous lobe first.
+  _drawCloudShape(ctx, sx, sy, s, shape, alpha) {
+    const trace = (dy) => {
+      ctx.beginPath();
+      ctx.ellipse(sx, sy + (shape.base[2] + dy) * s, shape.base[0] * s, shape.base[1] * s, 0, 0, Math.PI * 2);
+      for (const [dx, ldy, r] of shape.lobes) {
+        const cx = sx + dx * s, cy = sy + (ldy + dy) * s, rr = r * s;
+        ctx.moveTo(cx + rr, cy);
+        ctx.arc(cx, cy, rr, 0, Math.PI * 2);
+      }
+    };
+    // Soft underside shadow, offset down so it only peeks past the rim —
+    // a plain cartoon depth cue, drawn before (and mostly covered by) the
+    // main puff.
+    ctx.globalAlpha = alpha * 0.45;
+    ctx.fillStyle = '#9fb0c4';
+    trace(5);
+    ctx.fill();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#ffffff';
+    trace(0);
+    ctx.fill();
   }
 
   _drawPopups(ctx) {
